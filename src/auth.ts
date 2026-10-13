@@ -5,6 +5,7 @@ export type SignedInUser = {
   userId: string;
   email: string | null;
   publishableKey: string;
+  sessionHeaders: Headers;
 };
 
 type ClerkKeys = {
@@ -36,23 +37,25 @@ export async function requireBrowserUser(request: Request): Promise<SignedInUser
   }
   const state = await clerk().authenticateRequest(request, {
     ...keys,
-    authorizedParties: parties(),
+    authorizedParties: clerkAuthorizedParties(origin),
   });
+  const redirect = redirectFromClerkHeaders(state.headers, request, origin, keys.publishableKey);
   if (state.status === "handshake") {
-    return new Response(null, { status: 307, headers: state.headers });
+    return redirect ?? clerkRedirect(state.headers);
   }
+  if (redirect) return redirect;
   if (!state.isAuthenticated) {
-    return Response.redirect(signInRedirect(state.signInUrl, origin, currentUrl(request, origin)), 307);
+    return signInRedirectResponse(request, origin, state.signInUrl, keys.publishableKey);
   }
   const userId = state.toAuth().userId;
   if (!userId) {
-    return Response.redirect(signInRedirect(state.signInUrl, origin, currentUrl(request, origin)), 307);
+    return signInRedirectResponse(request, origin, state.signInUrl, keys.publishableKey);
   }
   const email = await allowedEmail(userId);
   if (email === false) {
     return Response.json({ error: "This account cannot open the settings page." }, { status: 403 });
   }
-  return { userId, email, publishableKey: keys.publishableKey };
+  return { userId, email, publishableKey: keys.publishableKey, sessionHeaders: state.headers };
 }
 
 export async function requireMcpUser(request: Request): Promise<SignedInUser | Response> {
@@ -70,7 +73,7 @@ export async function requireMcpUser(request: Request): Promise<SignedInUser | R
   if (!userId) return mcpUnauthorized(origin);
   const email = await allowedEmail(userId);
   if (email === false) return mcpUnauthorized(origin);
-  return { userId, email, publishableKey: keys.publishableKey };
+  return { userId, email, publishableKey: keys.publishableKey, sessionHeaders: new Headers() };
 }
 
 export function protectedResourceMetadata(origin: string): Record<string, unknown> {
@@ -115,8 +118,9 @@ function clerkKeys(): ClerkKeys {
   return { secretKey, publishableKey };
 }
 
-function parties(): string[] {
+export function clerkAuthorizedParties(origin: string): string[] {
   const values = new Set<string>([productionOrigin()]);
+  if (isAllowedOrigin(origin)) values.add(origin);
   const vercelUrl = process.env.VERCEL_URL?.trim();
   if (vercelUrl) values.add(`https://${vercelUrl}`);
   return [...values];
@@ -131,17 +135,149 @@ function currentUrl(request: Request, origin: string): string {
   }
 }
 
-function signInRedirect(signInUrl: string, origin: string, back: string): string {
-  const portal = `${clerkAccountPortal(clerkKeys().publishableKey)}/sign-in`;
+export function readDevBrowserToken(request: Request): string | null {
+  try {
+    const fromQuery = new URL(request.url).searchParams.get("__clerk_db_jwt");
+    if (fromQuery) return fromQuery;
+  } catch {
+    // Some runtimes pass a relative request URL.
+  }
+  const header = request.headers.get("cookie");
+  if (!header) return null;
+  let suffixed: string | null = null;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    const name = part.slice(0, separator).trim();
+    const raw = part.slice(separator + 1).trim();
+    if (!raw) continue;
+    let value: string;
+    try {
+      value = decodeURIComponent(raw);
+    } catch {
+      continue;
+    }
+    if (name === "__clerk_db_jwt") return value;
+    if (name.startsWith("__clerk_db_jwt_")) suffixed = value;
+  }
+  return suffixed;
+}
+
+export function signInRedirect(args: {
+  signInUrl: string;
+  origin: string;
+  back: string;
+  publishableKey: string;
+  devBrowserToken?: string | null;
+}): string {
+  const portal = `${clerkAccountPortal(args.publishableKey)}/sign-in`;
   let signIn: URL;
   try {
-    signIn = new URL(signInUrl, origin);
+    signIn = new URL(args.signInUrl, args.origin);
   } catch {
     signIn = new URL(portal);
   }
-  if (signIn.origin === new URL(origin).origin) signIn = new URL(portal);
-  signIn.searchParams.set("redirect_url", back);
+  if (signIn.origin === new URL(args.origin).origin) signIn = new URL(portal);
+  signIn.searchParams.set("redirect_url", args.back);
+  // Development sessions belong to the dev browser. The Account Portal returns
+  // to this host only when that same token is on the sign-in URL.
+  if (args.publishableKey.startsWith("pk_test_") && args.devBrowserToken) {
+    signIn.searchParams.set("__clerk_db_jwt", args.devBrowserToken);
+  }
   return signIn.toString();
+}
+
+export function unauthenticatedResponse(args: {
+  request: Request;
+  origin: string;
+  signInUrl: string;
+  publishableKey: string;
+  headers: Headers;
+}): Response {
+  const redirect = redirectFromClerkHeaders(args.headers, args.request, args.origin, args.publishableKey);
+  if (redirect) return redirect;
+  return signInRedirectResponse(args.request, args.origin, args.signInUrl, args.publishableKey);
+}
+
+export function withSessionCookies(response: Response, headers: Headers): Response {
+  const cookies = headers.getSetCookie();
+  if (cookies.length === 0) return response;
+  const next = new Response(response.body, response);
+  for (const cookie of cookies) next.headers.append("set-cookie", cookie);
+  return next;
+}
+
+function signInRedirectResponse(
+  request: Request,
+  origin: string,
+  signInUrl: string,
+  publishableKey: string,
+): Response {
+  const location = signInRedirect({
+    signInUrl,
+    origin,
+    back: currentUrl(request, origin),
+    publishableKey,
+    devBrowserToken: readDevBrowserToken(request),
+  });
+  return new Response(null, {
+    status: 307,
+    headers: {
+      Location: location,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function redirectFromClerkHeaders(
+  headers: Headers,
+  request: Request,
+  origin: string,
+  publishableKey: string,
+): Response | null {
+  const location = headers.get("location");
+  if (!location || !isClerkRedirect(location, request, origin, publishableKey)) return null;
+  return clerkRedirect(headers);
+}
+
+function isClerkRedirect(location: string, request: Request, origin: string, publishableKey: string): boolean {
+  let target: URL;
+  try {
+    target = new URL(location);
+  } catch {
+    return false;
+  }
+  const back = currentUrl(request, origin);
+  if (target.href === back) return false;
+  let app: URL;
+  try {
+    app = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (target.origin === app.origin) return true;
+  try {
+    const frontend = new URL(`https://${clerkFrontendApi(publishableKey)}`);
+    const portal = new URL(clerkAccountPortal(publishableKey));
+    return target.origin === frontend.origin || target.origin === portal.origin;
+  } catch {
+    return false;
+  }
+}
+
+function clerkRedirect(headers: Headers): Response {
+  const responseHeaders = new Headers();
+  headers.forEach((value, key) => {
+    if (key.toLowerCase() === "set-cookie") return;
+    responseHeaders.set(key, value);
+  });
+  for (const cookie of headers.getSetCookie()) {
+    responseHeaders.append("set-cookie", cookie);
+  }
+  if (!responseHeaders.has("cache-control")) {
+    responseHeaders.set("cache-control", "no-store");
+  }
+  return new Response(null, { status: 307, headers: responseHeaders });
 }
 
 async function allowedEmail(userId: string): Promise<string | null | false> {

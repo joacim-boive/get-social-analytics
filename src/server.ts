@@ -3,6 +3,7 @@ import {
   authorizationServerMetadata,
   protectedResourceMetadata,
   requireBrowserUser,
+  withSessionCookies,
 } from "./auth.js";
 import { handleMcp } from "./mcp/http.js";
 import { isAllowedOrigin, requestOrigin } from "./settings/origin.js";
@@ -36,7 +37,7 @@ app.all("*", async (c) => {
       });
       const response = await settings.fetch(c.req.raw);
       await store.drain();
-      return response;
+      return withSessionCookies(response, user.sessionHeaders);
     } finally {
       store.close();
     }
