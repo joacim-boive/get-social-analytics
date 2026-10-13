@@ -12,8 +12,12 @@ export function requestOrigin(requestUrl: string, headers: Headers): string {
   const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   if (forwardedHost) return `${forwardedProto || "https"}://${forwardedHost}`;
-  const url = new URL(requestUrl);
-  return `${url.protocol}//${url.host}`;
+  try {
+    const url = new URL(requestUrl);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return productionOrigin();
+  }
 }
 
 export function isAllowedOrigin(origin: string): boolean {

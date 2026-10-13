@@ -35,12 +35,12 @@ export async function requireBrowserUser(request: Request): Promise<SignedInUser
     return new Response(null, { status: 307, headers: state.headers });
   }
   if (!state.isAuthenticated) {
-    const signIn = new URL(state.signInUrl);
-    signIn.searchParams.set("redirect_url", currentUrl(request, origin));
-    return Response.redirect(signIn, 307);
+    return Response.redirect(signInRedirect(state.signInUrl, origin, currentUrl(request, origin)), 307);
   }
   const userId = state.toAuth().userId;
-  if (!userId) return Response.redirect(state.signInUrl, 307);
+  if (!userId) {
+    return Response.redirect(signInRedirect(state.signInUrl, origin, currentUrl(request, origin)), 307);
+  }
   const email = await allowedEmail(userId);
   if (email === false) {
     return Response.json({ error: "This account cannot open the settings page." }, { status: 403 });
@@ -116,8 +116,18 @@ function parties(): string[] {
 }
 
 function currentUrl(request: Request, origin: string): string {
-  const url = new URL(request.url);
-  return `${origin}${url.pathname}${url.search}`;
+  try {
+    const url = new URL(request.url);
+    return `${origin}${url.pathname}${url.search}`;
+  } catch {
+    return `${origin}/`;
+  }
+}
+
+function signInRedirect(signInUrl: string, origin: string, back: string): string {
+  const signIn = new URL(signInUrl || "/", origin);
+  signIn.searchParams.set("redirect_url", back);
+  return signIn.toString();
 }
 
 async function allowedEmail(userId: string): Promise<string | null | false> {
