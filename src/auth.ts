@@ -21,6 +21,13 @@ export function clerkFrontendApi(publishableKey: string): string {
   return decoded.slice(0, -1);
 }
 
+export function clerkAccountPortal(publishableKey: string): string {
+  const frontend = clerkFrontendApi(publishableKey);
+  const dev = frontend.match(/^(.+)\.clerk\.accounts\.dev$/);
+  if (dev?.[1]) return `https://${dev[1]}.accounts.dev`;
+  return `https://${frontend}`;
+}
+
 export async function requireBrowserUser(request: Request): Promise<SignedInUser | Response> {
   const keys = clerkKeys();
   const origin = requestOrigin(request.url, request.headers);
@@ -125,7 +132,14 @@ function currentUrl(request: Request, origin: string): string {
 }
 
 function signInRedirect(signInUrl: string, origin: string, back: string): string {
-  const signIn = new URL(signInUrl || "/", origin);
+  const portal = `${clerkAccountPortal(clerkKeys().publishableKey)}/sign-in`;
+  let signIn: URL;
+  try {
+    signIn = new URL(signInUrl, origin);
+  } catch {
+    signIn = new URL(portal);
+  }
+  if (signIn.origin === new URL(origin).origin) signIn = new URL(portal);
   signIn.searchParams.set("redirect_url", back);
   return signIn.toString();
 }

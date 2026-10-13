@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { clerkAccountPortal } from "../src/auth.js";
 import { SettingsError } from "../src/settings/save.js";
 import { assertAllowedOrigin, isAllowedOrigin, requestOrigin } from "../src/settings/origin.js";
 
@@ -15,6 +16,11 @@ describe("hosted origins", () => {
     expect(isAllowedOrigin("https://get-social-analytics.vercel.app")).toBe(true);
     expect(isAllowedOrigin("https://evil.example")).toBe(false);
     expect(() => assertAllowedOrigin("https://evil.example")).toThrow(SettingsError);
+  });
+
+  it("uses the Clerk account portal for a development publishable key", () => {
+    const key = `pk_test_${Buffer.from("example.clerk.accounts.dev$").toString("base64")}`;
+    expect(clerkAccountPortal(key)).toBe("https://example.accounts.dev");
   });
 
   it("reads the public host from forwarded headers", () => {
