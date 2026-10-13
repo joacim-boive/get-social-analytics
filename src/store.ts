@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { parseCredentials, type CredentialMap, type StoredConnection } from "./credentials.js";
-import type { AccountProfile, PlatformId } from "./report/types.js";
+import { isPlatformId, type AccountProfile, type PlatformId } from "./report/types.js";
 import { delay, isNodeError, isRecord } from "./util.js";
 
 type ConnectionRow = {
@@ -17,6 +17,23 @@ type ConnectionRow = {
   updated_at: string;
 };
 
+export type StoredOAuth = {
+  provider: "tiktok" | "youtube";
+  verifier: string;
+  redirectUri: string;
+  createdAt: number;
+};
+
+export type PersistedConnection = {
+  platform: PlatformId;
+  credentials: string;
+  accountId: string | null;
+  accountName: string | null;
+  accountHandle: string | null;
+  tokenExpiresAt: string | null;
+  updatedAt: string;
+};
+
 export type CredentialStore = {
   get<K extends PlatformId>(platform: K): StoredConnection<K> | null;
   save<K extends PlatformId>(
@@ -25,18 +42,31 @@ export type CredentialStore = {
     details?: { account?: AccountProfile | null; tokenExpiresAt?: string | null },
   ): StoredConnection<K>;
   withLock<T>(name: string, fn: () => Promise<T>): Promise<T>;
+  saveOAuth(state: string, pending: StoredOAuth): Promise<void>;
+  takeOAuth(state: string): Promise<StoredOAuth | null>;
+  drain(): Promise<void>;
   close(): void;
+};
+
+export type SqliteStore = CredentialStore & {
+  exportRows(): PersistedConnection[];
+  importRows(rows: PersistedConnection[]): void;
 };
 
 const DEFAULT_PATH = fileURLToPath(new URL("../data/analytics.sqlite", import.meta.url));
 
-export function openStore(dbPath = DEFAULT_PATH): CredentialStore {
-  const directory = path.dirname(dbPath);
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
+export function openStore(dbPath = DEFAULT_PATH): SqliteStore {
+  const memory = dbPath === ":memory:";
+  const directory = memory ? "" : path.dirname(dbPath);
+  if (!memory) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    chmodSync(directory, 0o700);
+  }
   const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("busy_timeout = 5000");
+  if (!memory) {
+    db.pragma("journal_mode = WAL");
+    db.pragma("busy_timeout = 5000");
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS connections (
       platform TEXT PRIMARY KEY,
@@ -46,11 +76,32 @@ export function openStore(dbPath = DEFAULT_PATH): CredentialStore {
       account_handle TEXT,
       token_expires_at TEXT,
       updated_at TEXT NOT NULL
-    )
+    );
+    CREATE TABLE IF NOT EXISTS oauth_pending (
+      state TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      verifier TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `);
-  tighten(dbPath);
+  if (!memory) tighten(dbPath);
 
   const selectOne = db.prepare("SELECT * FROM connections WHERE platform = ?");
+  const selectAll = db.prepare("SELECT * FROM connections");
+  const deleteAll = db.prepare("DELETE FROM connections");
+  const deleteOAuth = db.prepare("DELETE FROM oauth_pending WHERE created_at < ?");
+  const insertOAuth = db.prepare(`
+    INSERT INTO oauth_pending (state, provider, verifier, redirect_uri, created_at)
+    VALUES (@state, @provider, @verifier, @redirect_uri, @created_at)
+    ON CONFLICT(state) DO UPDATE SET
+      provider = excluded.provider,
+      verifier = excluded.verifier,
+      redirect_uri = excluded.redirect_uri,
+      created_at = excluded.created_at
+  `);
+  const selectOAuth = db.prepare("SELECT * FROM oauth_pending WHERE state = ?");
+  const removeOAuth = db.prepare("DELETE FROM oauth_pending WHERE state = ?");
   const upsert = db.prepare(`
     INSERT INTO connections (platform, credentials, account_id, account_name, account_handle, token_expires_at, updated_at)
     VALUES (@platform, @credentials, @account_id, @account_name, @account_handle, @token_expires_at, @updated_at)
@@ -85,13 +136,69 @@ export function openStore(dbPath = DEFAULT_PATH): CredentialStore {
         token_expires_at: tokenExpiresAt,
         updated_at: updatedAt,
       });
-      tighten(dbPath);
+      if (!memory) tighten(dbPath);
       const saved = selectOne.get(platform);
       if (!saved) throw new Error(`Failed to save ${platform} credentials.`);
       return readRow(platform, saved);
     },
     withLock(name, fn) {
+      if (memory) return fn();
       return withFileLock(directory, name, fn);
+    },
+    async saveOAuth(state, pending) {
+      deleteOAuth.run(Date.now() - 10 * 60 * 1000);
+      insertOAuth.run({
+        state,
+        provider: pending.provider,
+        verifier: pending.verifier,
+        redirect_uri: pending.redirectUri,
+        created_at: pending.createdAt,
+      });
+    },
+    async takeOAuth(state) {
+      deleteOAuth.run(Date.now() - 10 * 60 * 1000);
+      const row = selectOAuth.get(state);
+      removeOAuth.run(state);
+      if (!isOAuthRow(row)) return null;
+      if (Date.now() - row.created_at > 10 * 60 * 1000) return null;
+      if (row.provider !== "tiktok" && row.provider !== "youtube") return null;
+      return {
+        provider: row.provider,
+        verifier: row.verifier,
+        redirectUri: row.redirect_uri,
+        createdAt: row.created_at,
+      };
+    },
+    async drain() {},
+    exportRows() {
+      return selectAll.all().flatMap((row) => {
+        if (!isConnectionRow(row)) return [];
+        const platform = row.platform;
+        if (!isPlatformId(platform)) return [];
+        return [{
+          platform,
+          credentials: row.credentials,
+          accountId: row.account_id,
+          accountName: row.account_name,
+          accountHandle: row.account_handle,
+          tokenExpiresAt: row.token_expires_at,
+          updatedAt: row.updated_at,
+        }];
+      });
+    },
+    importRows(rows) {
+      deleteAll.run();
+      for (const row of rows) {
+        upsert.run({
+          platform: row.platform,
+          credentials: row.credentials,
+          account_id: row.accountId,
+          account_name: row.accountName,
+          account_handle: row.accountHandle,
+          token_expires_at: row.tokenExpiresAt,
+          updated_at: row.updatedAt,
+        });
+      }
     },
     close() {
       db.close();
@@ -111,6 +218,21 @@ function readRow<K extends PlatformId>(platform: K, row: unknown): StoredConnect
     tokenExpiresAt: row.token_expires_at,
     updatedAt: row.updated_at,
   };
+}
+
+type OAuthRow = {
+  provider: string;
+  verifier: string;
+  redirect_uri: string;
+  created_at: number;
+};
+
+function isOAuthRow(value: unknown): value is OAuthRow {
+  if (!isRecord(value)) return false;
+  return typeof value.provider === "string"
+    && typeof value.verifier === "string"
+    && typeof value.redirect_uri === "string"
+    && typeof value.created_at === "number";
 }
 
 function isConnectionRow(value: unknown): value is ConnectionRow {

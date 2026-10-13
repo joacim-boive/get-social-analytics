@@ -36,6 +36,8 @@ export function renderSettingsPage(args: {
   origin: string;
   connections: PublicConnection[];
   notice: PageNotice | null;
+  viewer?: string | null;
+  publishableKey?: string | null;
 }): string {
   const cards = args.connections
     .map((connection) => renderCard(connection, args.origin))
@@ -230,13 +232,14 @@ export function renderSettingsPage(args: {
 <body>
   <main class="shell">
     <header class="intro">
-      <p class="kicker">Local ledger</p>
+      <p class="kicker">Private ledger</p>
       <h1>Social analytics</h1>
-      <p class="lede">Connect your own accounts once. Agents call this machine and get one report shape for every platform.</p>
+      <p class="lede">Connect your accounts once. An agent signs in with this same account and gets one report shape for every platform.</p>
       <div class="endpoint">
-        <div>Settings stay on this computer.</div>
+        <div>${args.viewer ? `Signed in as ${escapeHtml(args.viewer)}` : "Signed in"}</div>
         <code>MCP ${escapeHtml(args.origin)}/mcp</code>
         <code>API ${escapeHtml(args.origin)}/api/analytics</code>
+        ${args.publishableKey ? `<button class="text-button" type="button" id="sign-out">Sign out</button>` : ""}
       </div>
     </header>
     <section class="workspace">
@@ -253,7 +256,16 @@ export function renderSettingsPage(args: {
       </div>
     </section>
   </main>
+  ${clerkScript(args.publishableKey ?? null)}
   <script>
+    const signOut = document.getElementById("sign-out");
+    if (signOut) {
+      signOut.addEventListener("click", async () => {
+        if (!window.Clerk) return;
+        await window.Clerk.load();
+        await window.Clerk.signOut({ redirectUrl: window.location.origin + "/" });
+      });
+    }
     const initial = ${boot};
     const forms = document.querySelectorAll("form[data-platform]");
     for (const form of forms) {
@@ -432,6 +444,14 @@ export function renderSettingsPage(args: {
 </html>`;
 }
 
+function clerkScript(publishableKey: string | null): string {
+  if (!publishableKey) return "";
+  const encoded = publishableKey.replace(/^pk_(test|live)_/, "");
+  const frontendApi = Buffer.from(encoded, "base64").toString("utf8").replace(/\$$/, "");
+  const src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
+  return `<script async crossorigin="anonymous" data-clerk-publishable-key="${escapeHtml(publishableKey)}" src="${escapeHtml(src)}"></script>`;
+}
+
 function renderReportPanel(connections: PublicConnection[]): string {
   const anyConfigured = connections.some((connection) => connection.configured);
   const choices = connections
@@ -509,7 +529,7 @@ function renderCard(connection: PublicConnection, origin: string): string {
       : "";
   const signIn =
     platform === "tiktok" || platform === "youtube"
-      ? `<button class="text-button" type="button" data-action="signin">Sign in on this computer</button>`
+      ? `<button class="text-button" type="button" data-action="signin">Sign in</button>`
       : "";
   return `<form class="card" data-platform="${platform}">
     <div class="card-head">

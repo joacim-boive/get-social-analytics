@@ -8,32 +8,31 @@ import { exchangeYouTubeCode } from "../platforms/youtube.js";
 import type { PlatformId } from "../report/types.js";
 import { isPlatformId } from "../report/types.js";
 import type { CredentialStore } from "../store.js";
+import { assertAllowedOrigin, requestOrigin } from "./origin.js";
 import { renderSettingsPage, type PageNotice } from "./page.js";
 import { listPublic, toPublic } from "./public.js";
 import { saveConnection, SettingsError } from "./save.js";
 
-type PendingOAuth = {
-  provider: "tiktok" | "youtube";
-  verifier: string;
-  redirectUri: string;
-  createdAt: number;
+export type SettingsAppOptions = {
+  viewer?: string | null;
+  publishableKey?: string | null;
 };
 
-const pendingOAuth = new Map<string, PendingOAuth>();
-
-export function createSettingsApp(store: CredentialStore): Hono {
+export function createSettingsApp(store: CredentialStore, options: SettingsAppOptions = {}): Hono {
   const app = new Hono();
   registerDataRoutes(app, store);
 
   app.get("/favicon.ico", (c) => c.body(null, 204));
 
   app.get("/", (c) => {
-    const origin = localOrigin(c.req.url);
+    const origin = requestOrigin(c.req.url, c.req.raw.headers);
     return c.html(
       renderSettingsPage({
         origin,
         connections: listPublic(store),
         notice: readNotice(c.req.query()),
+        viewer: options.viewer ?? null,
+        publishableKey: options.publishableKey ?? null,
       }),
     );
   });
@@ -99,21 +98,21 @@ export function createSettingsApp(store: CredentialStore): Hono {
     }
   });
 
-  app.get("/oauth/:provider/start", (c) => {
+  app.get("/oauth/:provider/start", async (c) => {
     const provider = readOAuthProvider(c.req.param("provider"));
     if (!provider)
       return c.redirect(errorRedirect("oauth", "Unknown sign-in provider."));
     try {
-      const redirectUri = oauthRedirect(c.req.url, provider);
+      const origin = requestOrigin(c.req.url, c.req.raw.headers);
+      const redirectUri = oauthRedirect(origin, provider);
       const state = randomBytes(16).toString("base64url");
       const verifier = pkce();
-      pendingOAuth.set(state, {
+      await store.saveOAuth(state, {
         provider,
         verifier: verifier.verifier,
         redirectUri,
         createdAt: Date.now(),
       });
-      prunePending();
       if (provider === "tiktok") {
         const connection = store.get("tiktok");
         if (!connection)
@@ -168,13 +167,8 @@ export function createSettingsApp(store: CredentialStore): Hono {
       );
     const state = c.req.query("state");
     const code = c.req.query("code");
-    const pending = state ? pendingOAuth.get(state) : undefined;
-    if (state) pendingOAuth.delete(state);
-    if (
-      !pending ||
-      pending.provider !== provider ||
-      Date.now() - pending.createdAt > 10 * 60 * 1000
-    ) {
+    const pending = state ? await store.takeOAuth(state) : null;
+    if (!pending || pending.provider !== provider) {
       return c.redirect(errorRedirect(provider, "Sign-in expired. Try again."));
     }
     if (!code)
@@ -278,33 +272,15 @@ function errorRedirect(provider: string, message: string): string {
   return `/?error=${encodeURIComponent(provider)}&message=${encodeURIComponent(message)}`;
 }
 
-function oauthRedirect(
-  requestUrl: string,
-  provider: "tiktok" | "youtube",
-): string {
-  const url = new URL(requestUrl);
-  if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
-    throw new SettingsError("Sign-in is only available from this computer.");
-  }
-  return `${url.protocol}//${url.host}/oauth/${provider}/callback`;
-}
-
-function localOrigin(requestUrl: string): string {
-  const url = new URL(requestUrl);
-  return `${url.protocol}//${url.host}`;
+function oauthRedirect(origin: string, provider: "tiktok" | "youtube"): string {
+  assertAllowedOrigin(origin);
+  return `${origin}/oauth/${provider}/callback`;
 }
 
 function pkce(): { verifier: string; challenge: string } {
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   return { verifier, challenge };
-}
-
-function prunePending(): void {
-  const cutoff = Date.now() - 10 * 60 * 1000;
-  for (const [state, pending] of pendingOAuth) {
-    if (pending.createdAt < cutoff) pendingOAuth.delete(state);
-  }
 }
 
 function errorMessage(error: unknown): string {

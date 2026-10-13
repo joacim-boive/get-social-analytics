@@ -1,8 +1,8 @@
 # Social analytics
 
-A local server that gives agents current numbers from your own Instagram, Facebook, TikTok, and YouTube accounts. You connect each account once in the browser. Any MCP client on this machine can then ask for a date range and get the same report shape back from every platform.
+A hosted server that gives agents current numbers from your own Instagram, Facebook, TikTok, and YouTube accounts. You sign in with Clerk, connect each account once, and an agent signs in with that same account.
 
-Credentials stay in `data/analytics.sqlite` on this computer. That directory is gitignored, and the database files are mode `0600`. The server binds to `127.0.0.1` only.
+The site and the MCP endpoint run on Vercel. Platform tokens live in Turso. Only the Clerk user in `ALLOWED_CLERK_EMAIL` can open them.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ Stdio and the settings page share the same database. Add this to Cursor, Claude 
 }
 ```
 
-While `npm start` is running, clients that speak [streamable HTTP](https://modelcontextprotocol.io) can use `http://127.0.0.1:8787/mcp`.
+Agents that speak [streamable HTTP](https://modelcontextprotocol.io) use `https://get-social-analytics.vercel.app/mcp`. Add that URL and choose sign-in. Cursor, Claude, and other clients open Clerk and you approve access with the same account as the website.
 
 Stdio writes protocol messages to stdout. Leave that stream alone if you are debugging the server.
 

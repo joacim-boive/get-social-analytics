@@ -18,8 +18,9 @@ Node.js 22 or newer. `npm run stdio` must not write logs to stdout. Protocol tra
 
 ## Layout
 
-- `src/http.ts` — local HTTP entry. Settings routes, `/api/analytics`, and `/mcp`. Binds to `127.0.0.1`.
-- `src/server.ts` — Vercel entry. Same settings app, exported for the Hono builder. On Vercel the database is `/tmp/get-social-analytics/analytics.sqlite` and does not survive a new instance.
+- `src/http.ts` — local HTTP entry for tests and `npm start`. Binds to `127.0.0.1`.
+- `src/server.ts` — Vercel entry. Clerk guards the settings page and `/mcp`. Platform tokens live in Turso, one row set per Clerk user.
+- `src/auth.ts` — browser session checks and MCP OAuth token checks.
 - `src/stdio.ts` — stdio entry.
 - `src/api/` — HTTP analytics and content routes. JSON is the comparison document. `format=markdown` stays the agent markdown report.
 - `src/mcp/server.ts` — `list_platforms`, `get_analytics`, `get_content`.
@@ -48,12 +49,12 @@ These are product rules. A change that makes the JSON easier to produce by weake
 
 ## Credentials and security
 
-- Secrets live only in `data/`, which is gitignored. Never log tokens, put them in errors, or return them from tools or `/api/connections`.
+- Secrets live in Turso on the hosted app, and in `data/` for the local file store used by tests. Never log tokens, put them in errors, or return them from tools or `/api/connections`. `CLERK_SECRET_KEY` and `TURSO_AUTH_TOKEN` stay in the environment.
 - The settings API returns `last4` for secrets and the full value only for public ids (Page id, TikTok client key, YouTube client id).
 - A blank secret on save means "keep the stored value". A newly pasted access token or refresh token clears `tokenExpiresAt`. Replacing the YouTube refresh token also clears the cached access token.
 - YouTube can be saved with only the client id and secret. `refreshToken` stays null until sign-in or a pasted token. Do not call Google's token endpoint without one.
 - TikTok and YouTube refresh tokens are rotated under `store.withLock`. Re-read inside the lock. If another process already replaced the failed access token, keep that replacement and do not refresh again.
-- OAuth redirects are `http://127.0.0.1:<port>/oauth/<provider>/callback` and the localhost equivalent. Reject any other host.
+- OAuth redirects are the hosted origin plus `/oauth/<provider>/callback`, or localhost for tests. Reject any other host.
 - Instagram and Facebook stay paste-only. Do not add a Meta login button unless that flow is actually configured.
 
 ## Code

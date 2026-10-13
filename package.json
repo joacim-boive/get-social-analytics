@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/backend": "^3.23.2",
     "@hono/node-server": "^1.19.6",
+    "@libsql/client": "^0.18.0",
     "@modelcontextprotocol/sdk": "^1.20.2",
     "better-sqlite3": "^12.4.1",
     "hono": "^4.10.1",
