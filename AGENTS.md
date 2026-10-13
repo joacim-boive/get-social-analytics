@@ -8,7 +8,7 @@ Read `README.md` for setup, tool arguments, and what each platform can honestly 
 
 ```bash
 npm install
-npm start          # settings UI and streamable HTTP MCP on 127.0.0.1:8787
+npm start          # settings UI, JSON API, and streamable HTTP MCP on 127.0.0.1:8787
 npm run stdio      # stdio MCP, same SQLite database
 npm test           # Vitest, mocked fetch, no live API calls
 npm run typecheck
@@ -18,10 +18,11 @@ Node.js 22 or newer. `npm run stdio` must not write logs to stdout. Protocol tra
 
 ## Layout
 
-- `src/http.ts` — HTTP entry. Settings routes plus `/mcp`. Binds to `127.0.0.1`.
+- `src/http.ts` — HTTP entry. Settings routes, `/api/analytics`, and `/mcp`. Binds to `127.0.0.1`.
 - `src/stdio.ts` — stdio entry.
+- `src/api/` — HTTP analytics and content routes. JSON is the comparison document. `format=markdown` stays the agent markdown report.
 - `src/mcp/server.ts` — `list_platforms`, `get_analytics`, `get_content`.
-- `src/settings/` — the settings page, credential merge, and localhost OAuth.
+- `src/settings/` — the settings page, the copy-for-agent tab, credential merge, and localhost OAuth.
 - `src/store.ts` — SQLite credentials, masked reads, and the cross-process refresh lock.
 - `src/report/` — shared types, period presets, report builders, JSON and markdown.
 - `src/platforms/` — one client per platform, plus Meta insight parsing and error mapping.
@@ -49,6 +50,7 @@ These are product rules. A change that makes the JSON easier to produce by weake
 - Secrets live only in `data/`, which is gitignored. Never log tokens, put them in errors, or return them from tools or `/api/connections`.
 - The settings API returns `last4` for secrets and the full value only for public ids (Page id, TikTok client key, YouTube client id).
 - A blank secret on save means "keep the stored value". A newly pasted access token or refresh token clears `tokenExpiresAt`. Replacing the YouTube refresh token also clears the cached access token.
+- YouTube can be saved with only the client id and secret. `refreshToken` stays null until sign-in or a pasted token. Do not call Google's token endpoint without one.
 - TikTok and YouTube refresh tokens are rotated under `store.withLock`. Re-read inside the lock. If another process already replaced the failed access token, keep that replacement and do not refresh again.
 - OAuth redirects are `http://127.0.0.1:<port>/oauth/<provider>/callback` and the localhost equivalent. Reject any other host.
 - Instagram and Facebook stay paste-only. Do not add a Meta login button unless that flow is actually configured.

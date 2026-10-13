@@ -1,5 +1,4 @@
 import { asNumber, isRecord, readString } from "../util.js";
-import { formatIsoDate } from "../report/period.js";
 import type { SeriesPoint, UnavailableMetric } from "../report/types.js";
 import { mapMetaError, PlatformApiError } from "./errors.js";
 import { requestJson } from "./http.js";
@@ -35,7 +34,7 @@ export function parseInsightPayload(body: unknown): ParsedInsight[] {
     if (!isRecord(entry) || typeof entry.name !== "string") continue;
     metrics.push({
       name: entry.name,
-      totalValue: isRecord(entry.total_value) ? asNumber(entry.total_value.value) : null,
+      totalValue: readInsightTotal(entry),
       points: readPoints(entry),
       breakdowns: readBreakdowns(entry),
     });
@@ -110,6 +109,25 @@ export function nextCursor(body: unknown): string | null {
   return readString(body.paging.cursors, "after");
 }
 
+function readInsightTotal(entry: Record<string, unknown>): number | null {
+  if (isRecord(entry.total_value)) {
+    const total = asNumber(entry.total_value.value);
+    if (total !== null) return total;
+  }
+  if (isRecord(entry.value)) {
+    const nested = asNumber(entry.value.value);
+    if (nested !== null) return nested;
+  }
+  const direct = asNumber(entry.value);
+  if (direct !== null && !isRecord(entry.value)) return direct;
+  if (!Array.isArray(entry.values)) return null;
+  const lifetime = entry.values.filter(
+    (point): point is Record<string, unknown> => isRecord(point) && typeof point.end_time !== "string",
+  );
+  if (lifetime.length !== 1) return null;
+  return asNumber(lifetime[0]?.value);
+}
+
 function readPoints(entry: Record<string, unknown>): Array<{ date: string; value: number }> {
   if (!Array.isArray(entry.values)) return [];
   const points: Array<{ date: string; value: number }> = [];
@@ -117,7 +135,7 @@ function readPoints(entry: Record<string, unknown>): Array<{ date: string; value
     if (!isRecord(point) || typeof point.end_time !== "string") continue;
     const value = asNumber(point.value);
     if (value === null) continue;
-    points.push({ date: insightEndDate(point.end_time), value });
+    points.push({ date: metaInsightDate(point.end_time), value });
   }
   return points;
 }
@@ -138,8 +156,15 @@ function readBreakdowns(entry: Record<string, unknown>): Array<{ dimension: stri
   return breakdowns;
 }
 
-function insightEndDate(endTime: string): string {
+export function metaInsightDate(endTime: string): string {
   const date = new Date(endTime);
   if (Number.isNaN(date.getTime())) return endTime.slice(0, 10);
-  return formatIsoDate(new Date(date.getTime() - 1000));
+  // Page and Instagram day insights use an exclusive end_time at Pacific midnight.
+  // 07:00 UTC during PDT, 08:00 UTC during PST. The measured day is the previous Pacific date.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(date.getTime() - 1000));
 }

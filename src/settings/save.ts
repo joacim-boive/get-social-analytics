@@ -68,7 +68,7 @@ function saveYouTube(store: CredentialStore, body: Record<string, unknown>): voi
   const existing = store.get("youtube");
   const clientId = publicField(body, "clientId", existing?.credentials.clientId ?? null, "Client id");
   const clientSecret = secretField(body, "clientSecret", existing?.credentials.clientSecret ?? null, "Client secret");
-  const refreshToken = secretField(body, "refreshToken", existing?.credentials.refreshToken ?? null, "Refresh token");
+  const refreshToken = optionalSecret(body, "refreshToken", existing?.credentials.refreshToken ?? null);
   store.save(
     "youtube",
     {
@@ -92,6 +92,16 @@ function secretField(
     if (!existing) throw new SettingsError(`${label} is required.`);
     return { value: existing, replaced: false };
   }
+  return { value: incoming, replaced: true };
+}
+
+function optionalSecret(
+  body: Record<string, unknown>,
+  key: string,
+  existing: string | null,
+): { value: string | null; replaced: boolean } {
+  const incoming = readString(body, key);
+  if (!incoming || incoming.startsWith("••••")) return { value: existing, replaced: false };
   return { value: incoming, replaced: true };
 }
 

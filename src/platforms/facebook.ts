@@ -92,11 +92,14 @@ async function loadFacebook(
   const unavailable: UnavailableMetric[] = [
     {
       key: "watch_time_minutes",
-      reason: "Facebook Page insights do not provide watch time.",
+      code: "unsupported",
+      reason:
+        "Facebook account insights are not queried for a single watch-time total here. Video watch time is requested on each video post.",
     },
   ];
   const notes = [
     "Facebook post metrics are lifetime totals for posts published in the range, not activity during the range.",
+    "Daily page metrics use Pacific Time. Each insight end_time is the exclusive end of the measured Pacific day, so the date is that day rather than the UTC timestamp.",
   ];
   let summary: Metric[] | undefined;
   let series: ReturnType<typeof seriesFromPoints> | undefined;
@@ -255,30 +258,71 @@ async function loadContent(
     posts.map((post) => toContentItem(post, null)),
   ).slice(0, contentLimit);
   let viewMisses = 0;
+  const viewErrors: string[] = [];
   const withViews: ContentItem[] = [];
   for (const item of ranked) {
-    const views = await postViews(token, item.id);
-    if (views === null) viewMisses += 1;
-    const metrics = [...item.metrics];
-    if (views !== null) {
-      metrics.unshift(
-        metric({
-          key: "views",
-          label: "Views",
-          value: views,
-          unit: "views",
-          aggregation: "content_lifetime_sum",
-          source: "post_media_view",
-        }),
+    const videoId = videoIdFrom(
+      posts.find((post) => readString(post, "id") === item.id),
+    );
+    const insights = await postInsights(token, item.id, videoId);
+    if (insights.views === null) {
+      viewMisses += 1;
+      viewErrors.push(
+        insights.failure ?? `${item.id}: no post_media_view value`,
       );
     }
+    const metrics = [...item.metrics];
+    pushLifetime(
+      metrics,
+      "views",
+      "Views",
+      insights.views,
+      "views",
+      "post_media_view",
+    );
+    pushLifetime(
+      metrics,
+      "reach",
+      "Accounts reached",
+      insights.reach,
+      "accounts",
+      "post_total_media_view_unique",
+    );
+    pushLifetime(
+      metrics,
+      "watch_time_minutes",
+      "Watch time",
+      insights.watchMinutes,
+      "minutes",
+      "post_video_view_time",
+    );
+    pushLifetime(
+      metrics,
+      "average_view_duration_seconds",
+      "Average view duration",
+      insights.averageSeconds,
+      "seconds",
+      "post_video_avg_time_watched",
+    );
+    pushLifetime(
+      metrics,
+      "video_duration_seconds",
+      "Video duration",
+      insights.durationSeconds,
+      "seconds",
+      "length",
+    );
     withViews.push({ ...item, metrics });
   }
   if (viewMisses > 0) {
+    const denied = viewErrors.some((entry) =>
+      entry.includes("permission_denied"),
+    );
     unavailable.push({
       key: "views",
-      reason:
-        "Facebook did not return post_media_view for every post. Those posts are ranked on reactions, comments, and shares.",
+      code: denied ? "permission_denied" : "no_data",
+      reason: "Facebook did not return post_media_view for every post.",
+      detail: viewErrors.join(" "),
     });
   }
   return rankContent(withViews);
@@ -290,7 +334,7 @@ async function listPosts(
   period: AnalyticsQuery["period"],
 ): Promise<Record<string, unknown>[]> {
   const fields =
-    "id,message,created_time,permalink_url,status_type,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)";
+    "id,message,created_time,permalink_url,status_type,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0),attachments{media_type,type,target{id}}";
   try {
     return await pagePosts(token, pageId, "published_posts", fields, period);
   } catch (error) {
@@ -384,26 +428,123 @@ function toContentItem(
   };
 }
 
-async function postViews(
+async function postInsights(
   token: string,
   postId: string,
+  videoId: string | null,
+): Promise<{
+  views: number | null;
+  reach: number | null;
+  watchMinutes: number | null;
+  averageSeconds: number | null;
+  durationSeconds: number | null;
+  failure: string | null;
+}> {
+  const names = videoId
+    ? [
+        "post_media_view",
+        "post_total_media_view_unique",
+        "post_video_view_time",
+        "post_video_avg_time_watched",
+      ]
+    : ["post_media_view", "post_total_media_view_unique"];
+  const result = await fetchInsightMetrics({
+    host: FACEBOOK_GRAPH,
+    path: `${postId}/insights`,
+    token,
+    metrics: names,
+    params: { period: "lifetime" },
+    keyForMetric: (name) => name,
+  }).catch((error: unknown) => {
+    if (error instanceof PlatformApiError && error.code === "token_invalid")
+      throw error;
+    const code = error instanceof PlatformApiError ? error.code : "api_error";
+    const message =
+      error instanceof Error ? error.message : "The insight call failed.";
+    return {
+      parsed: [],
+      unavailable: [],
+      failure: `${postId}: ${code}: ${sanitizeMetaMessage(message)}`,
+    };
+  });
+  const read = (name: string): number | null => {
+    const insight = insightByName(result.parsed, name);
+    return insight?.totalValue ?? summedPoints(insight);
+  };
+  const watchMs = videoId ? read("post_video_view_time") : null;
+  const averageMs = videoId ? read("post_video_avg_time_watched") : null;
+  return {
+    views: read("post_media_view"),
+    reach: read("post_total_media_view_unique"),
+    watchMinutes: watchMs === null ? null : watchMs / 60_000,
+    averageSeconds: averageMs === null ? null : averageMs / 1000,
+    durationSeconds: videoId ? await videoLength(token, videoId) : null,
+    failure:
+      "failure" in result && typeof result.failure === "string"
+        ? result.failure
+        : null,
+  };
+}
+
+async function videoLength(
+  token: string,
+  videoId: string,
 ): Promise<number | null> {
   try {
-    const result = await fetchInsightMetrics({
-      host: FACEBOOK_GRAPH,
-      path: `${postId}/insights`,
-      token,
-      metrics: ["post_media_view"],
-      params: {},
-      keyForMetric: () => "views",
+    const body = await graphGet(FACEBOOK_GRAPH, videoId, token, {
+      fields: "length",
     });
-    const insight = insightByName(result.parsed, "post_media_view");
-    return insight?.totalValue ?? summedPoints(insight);
+    return isRecord(body) ? asNumber(body.length) : null;
   } catch (error) {
     if (error instanceof PlatformApiError && error.code === "token_invalid")
       throw error;
     return null;
   }
+}
+
+function videoIdFrom(
+  record: Record<string, unknown> | undefined,
+): string | null {
+  if (
+    !record ||
+    !isRecord(record.attachments) ||
+    !Array.isArray(record.attachments.data)
+  )
+    return null;
+  for (const item of record.attachments.data) {
+    if (!isRecord(item) || !isRecord(item.target)) continue;
+    const id = readString(item.target, "id");
+    const kind = `${readString(item, "media_type") ?? ""} ${readString(item, "type") ?? ""}`;
+    if (id && kind.includes("video")) return id;
+  }
+  return null;
+}
+
+function sanitizeMetaMessage(message: string): string {
+  return message
+    .replace(/access_token=[^&\s]+/gi, "access_token=[redacted]")
+    .slice(0, 240);
+}
+
+function pushLifetime(
+  metrics: Metric[],
+  key: string,
+  label: string,
+  value: number | null,
+  unit: string,
+  source: string,
+): void {
+  if (value === null) return;
+  metrics.push(
+    metric({
+      key,
+      label,
+      value,
+      unit,
+      aggregation: "content_lifetime_sum",
+      source,
+    }),
+  );
 }
 
 async function fetchPage(

@@ -22,7 +22,7 @@ export type TikTokCredentials = {
 export type YouTubeCredentials = {
   clientId: string;
   clientSecret: string;
-  refreshToken: string;
+  refreshToken: string | null;
   accessToken: string | null;
 };
 
@@ -79,9 +79,13 @@ function parseYouTube(value: unknown): YouTubeCredentials {
   const record = expectRecord(value, "YouTube");
   const clientId = readString(record, "clientId");
   const clientSecret = readString(record, "clientSecret");
-  const refreshToken = readString(record, "refreshToken");
-  if (!clientId || !clientSecret || !refreshToken) throw new Error("YouTube credentials are incomplete.");
-  return { clientId, clientSecret, refreshToken, accessToken: readString(record, "accessToken") };
+  if (!clientId || !clientSecret) throw new Error("YouTube credentials are incomplete.");
+  return {
+    clientId,
+    clientSecret,
+    refreshToken: readString(record, "refreshToken"),
+    accessToken: readString(record, "accessToken"),
+  };
 }
 
 function expectRecord(value: unknown, label: string): Record<string, unknown> {

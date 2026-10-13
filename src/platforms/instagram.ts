@@ -38,15 +38,6 @@ const ACCOUNT_METRICS = [
   "accounts_engaged",
   "total_interactions",
 ] as const;
-const MEDIA_METRICS = [
-  "views",
-  "reach",
-  "likes",
-  "comments",
-  "shares",
-  "saved",
-  "total_interactions",
-];
 
 const EMPTY_INSIGHTS =
   "Instagram returned no account insights for this range. Accounts with fewer than 100 followers often get an empty set instead of zeros.";
@@ -96,7 +87,8 @@ async function loadInstagram(
     const unavailable: UnavailableMetric[] = [
       {
         key: "watch_time_minutes",
-        reason: "Instagram does not provide watch time.",
+        code: "unsupported",
+        reason: "Instagram account insights in Graph v26 do not include watch time. Reel watch time is requested from each reel.",
       },
     ];
     const notes = [
@@ -300,19 +292,26 @@ async function loadSummary(
       since: String(followerRange.since),
       until: String(followerRange.until),
     },
-    keyForMetric: () => "followers",
+    keyForMetric: () => "audienceTotal",
   });
   const followerPoints = insightByName(followerSeries.parsed, "follower_count");
-  if (followerPoints && followerPoints.points.length > 0) {
-    notes.push(
-      "series.followers is the follower total at the end of each day, not new followers.",
-    );
+  const dailyValues = followerPoints?.points.map((point) => point.value) ?? [];
+  const snapshot = profile.followers;
+  const looksLikeTotal = snapshot !== null && dailyValues.some((value) => value >= snapshot / 2);
+  if (!looksLikeTotal) {
+    const sample = dailyValues.slice(0, 5).join(", ");
+    unavailable.push({
+      key: "audienceTotal",
+      code: "no_data",
+      reason: "Instagram did not return a historical follower total.",
+      detail: followerPoints
+        ? `follower_count is described as the total number of unique accounts following the profile, but its daily values (${sample || "none"}) do not match the profile followers_count snapshot${snapshot === null ? "" : ` of ${snapshot}`}. Those values are not used as audienceTotal.`
+        : "The follower_count insight returned no daily values.",
+    });
   }
   return {
     summary,
-    series: seriesFromPoints([
-      { key: "followers", points: followerPoints?.points ?? [] },
-    ]),
+    series: looksLikeTotal ? seriesFromPoints([{ key: "followers", points: followerPoints?.points ?? [] }]) : [],
     notes,
   };
 }
@@ -331,17 +330,23 @@ async function loadContent(
   for (const item of shortlist) {
     const mediaId = readString(item, "id");
     if (!mediaId) continue;
-    const insights = await mediaInsightSafe(token, mediaId);
+    const product = (readString(item, "media_product_type") ?? "").toUpperCase();
+    const insights = await mediaInsightSafe(token, mediaId, product);
     if (insights === null) insightMisses += 1;
     items.push(toContentItem(item, insights ?? []));
   }
   if (insightMisses > 0) {
     unavailable.push({
       key: "content_insights",
-      reason:
-        "Some media insight calls failed. Those posts use the like and comment counts on the media object.",
+      code: "api_error",
+      reason: "Some media insight calls failed. Those posts use the like and comment counts on the media object.",
     });
   }
+  unavailable.push({
+    key: "videoDurationSeconds",
+    code: "unsupported",
+    reason: "Instagram media objects in Graph v26 do not return a video duration field. Reel watch time is still requested from each reel.",
+  });
   return rankContent(items).slice(0, contentLimit);
 }
 
@@ -391,22 +396,30 @@ function isBeforePeriod(timestamp: string, start: string): boolean {
 async function mediaInsightSafe(
   token: string,
   mediaId: string,
+  product: string,
 ): Promise<ParsedInsight[] | null> {
   try {
     const result = await fetchInsightMetrics({
       host: INSTAGRAM_GRAPH,
       path: `${mediaId}/insights`,
       token,
-      metrics: MEDIA_METRICS,
+      metrics: metricsForProduct(product),
       params: {},
       keyForMetric: (name) => name,
     });
     return result.parsed;
   } catch (error) {
-    if (error instanceof PlatformApiError && error.code === "token_invalid")
-      throw error;
+    if (error instanceof PlatformApiError && error.code === "token_invalid") throw error;
     return null;
   }
+}
+
+function metricsForProduct(product: string): string[] {
+  if (product === "REELS") {
+    return ["views", "reach", "likes", "comments", "shares", "saved", "ig_reels_avg_watch_time", "ig_reels_video_view_total_time"];
+  }
+  if (product === "STORY") return ["views", "reach", "shares"];
+  return ["views", "reach", "likes", "comments", "shares", "saved"];
 }
 
 function toContentItem(
@@ -423,6 +436,8 @@ function toContentItem(
   const shares = insightByName(insights, "shares")?.totalValue ?? null;
   const saves = insightByName(insights, "saved")?.totalValue ?? null;
   const reach = insightByName(insights, "reach")?.totalValue ?? null;
+  const averageWatchMs = insightByName(insights, "ig_reels_avg_watch_time")?.totalValue ?? null;
+  const totalWatchMs = insightByName(insights, "ig_reels_video_view_total_time")?.totalValue ?? null;
   const metrics: Metric[] = [];
   pushContentMetric(metrics, "views", "Views", views, "views");
   pushContentMetric(metrics, "reach", "Accounts reached", reach, "reach");
@@ -436,6 +451,26 @@ function toContentItem(
   pushContentMetric(metrics, "comments", "Comments", comments, "comments");
   pushContentMetric(metrics, "shares", "Shares", shares, "shares");
   pushContentMetric(metrics, "saves", "Saves", saves, "saved");
+  if (averageWatchMs !== null) {
+    metrics.push(metric({
+      key: "average_view_duration_seconds",
+      label: "Average view duration",
+      value: averageWatchMs / 1000,
+      unit: "seconds",
+      aggregation: "content_lifetime_sum",
+      source: "ig_reels_avg_watch_time",
+    }));
+  }
+  if (totalWatchMs !== null) {
+    metrics.push(metric({
+      key: "watch_time_minutes",
+      label: "Watch time",
+      value: totalWatchMs / 60000,
+      unit: "minutes",
+      aggregation: "content_lifetime_sum",
+      source: "ig_reels_video_view_total_time",
+    }));
+  }
   const engagementParts = [likes, comments, shares, saves].filter(
     (value): value is number => value !== null,
   );

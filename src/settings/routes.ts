@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { createHash, randomBytes } from "node:crypto";
+import { registerDataRoutes } from "../api/routes.js";
 import { getClient } from "../platforms/client.js";
 import { PlatformApiError } from "../platforms/errors.js";
 import { exchangeTikTokCode } from "../platforms/tiktok.js";
@@ -22,6 +23,7 @@ const pendingOAuth = new Map<string, PendingOAuth>();
 
 export function createSettingsApp(store: CredentialStore): Hono {
   const app = new Hono();
+  registerDataRoutes(app, store);
 
   app.get("/favicon.ico", (c) => c.body(null, 204));
 

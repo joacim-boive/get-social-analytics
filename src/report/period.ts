@@ -23,7 +23,11 @@ export function parseIsoDate(value: string): Date {
   const month = Number(match[2]);
   const day = Number(match[3]);
   const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
     throw new PeriodError(`Invalid date: ${value}`);
   }
   return date;
@@ -43,7 +47,10 @@ export function startOfLocalDay(isoDate: string): Date {
   return parseIsoDate(isoDate);
 }
 
-export function periodUnixRange(period: { start: string; end: string }): { since: number; until: number } {
+export function periodUnixRange(period: { start: string; end: string }): {
+  since: number;
+  until: number;
+} {
   const since = startOfLocalDay(period.start);
   const until = addDays(startOfLocalDay(period.end), 1);
   return {
@@ -58,13 +65,36 @@ export function localDateFromIso(value: string): string | null {
   return formatIsoDate(date);
 }
 
-export function isWithinPeriod(publishedAt: string, period: { start: string; end: string }): boolean {
+export function isWithinPeriod(
+  publishedAt: string,
+  period: { start: string; end: string },
+): boolean {
   const day = localDateFromIso(publishedAt);
   if (!day) return false;
   return day >= period.start && day <= period.end;
 }
 
-export function resolvePeriod(request: PeriodRequest, now = new Date()): ResolvedPeriod {
+export function inclusiveDays(start: string, end: string): number {
+  const from = parseIsoDate(start).getTime();
+  const to = parseIsoDate(end).getTime();
+  return Math.round((to - from) / 86_400_000) + 1;
+}
+
+export function periodForDays(days: number, now = new Date()): PeriodRequest {
+  if (!Number.isInteger(days) || days < 1 || days > 730) {
+    throw new PeriodError("days must be a whole number from 1 to 730.");
+  }
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return {
+    start: formatIsoDate(addDays(today, 1 - days)),
+    end: formatIsoDate(today),
+  };
+}
+
+export function resolvePeriod(
+  request: PeriodRequest,
+  now = new Date(),
+): ResolvedPeriod {
   if ("preset" in request) {
     const range = rangeForPreset(request.preset, now);
     return { requested: request, ...range, notes: [] };
@@ -72,33 +102,62 @@ export function resolvePeriod(request: PeriodRequest, now = new Date()): Resolve
 
   const start = formatIsoDate(parseIsoDate(request.start));
   const end = formatIsoDate(parseIsoDate(request.end));
-  if (start > end) throw new PeriodError("period.start must be on or before period.end.");
+  if (start > end)
+    throw new PeriodError("period.start must be on or before period.end.");
   return { requested: { start, end }, start, end, notes: [] };
 }
 
-export function clampLookback(period: ResolvedPeriod, earliestStart: string, note: string): ResolvedPeriod {
-  if (period.start >= earliestStart && period.end >= earliestStart) return period;
+export function clampLookback(
+  period: ResolvedPeriod,
+  earliestStart: string,
+  note: string,
+): ResolvedPeriod {
+  if (period.start >= earliestStart && period.end >= earliestStart)
+    return period;
   const start = period.start < earliestStart ? earliestStart : period.start;
   const end = period.end < earliestStart ? earliestStart : period.end;
   const outside = period.end < earliestStart;
-  const notes = [...period.notes, outside ? `${note} The requested range is older than that, so only the oldest available day was applied.` : note];
+  const notes = [
+    ...period.notes,
+    outside
+      ? `${note} The requested range is older than that, so only the oldest available day was applied.`
+      : note,
+  ];
   return { ...period, start, end, notes };
 }
 
-function rangeForPreset(preset: PeriodPreset, now: Date): { start: string; end: string } {
+function rangeForPreset(
+  preset: PeriodPreset,
+  now: Date,
+): { start: string; end: string } {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if (preset === "yesterday") {
     const day = formatIsoDate(addDays(today, -1));
     return { start: day, end: day };
   }
   if (preset === "last_7_days") {
-    return { start: formatIsoDate(addDays(today, -6)), end: formatIsoDate(today) };
+    return {
+      start: formatIsoDate(addDays(today, -6)),
+      end: formatIsoDate(today),
+    };
   }
   if (preset === "last_28_days") {
-    return { start: formatIsoDate(addDays(today, -27)), end: formatIsoDate(today) };
+    return {
+      start: formatIsoDate(addDays(today, -27)),
+      end: formatIsoDate(today),
+    };
+  }
+  if (preset === "last_30_days") {
+    return {
+      start: formatIsoDate(addDays(today, -29)),
+      end: formatIsoDate(today),
+    };
   }
   if (preset === "last_90_days") {
-    return { start: formatIsoDate(addDays(today, -89)), end: formatIsoDate(today) };
+    return {
+      start: formatIsoDate(addDays(today, -89)),
+      end: formatIsoDate(today),
+    };
   }
   if (preset === "this_month") {
     return {
@@ -108,5 +167,8 @@ function rangeForPreset(preset: PeriodPreset, now: Date): { start: string; end: 
   }
   const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-  return { start: formatIsoDate(lastMonthStart), end: formatIsoDate(lastMonthEnd) };
+  return {
+    start: formatIsoDate(lastMonthStart),
+    end: formatIsoDate(lastMonthEnd),
+  };
 }

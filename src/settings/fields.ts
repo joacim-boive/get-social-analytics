@@ -4,6 +4,7 @@ export type FieldSpec = {
   name: string;
   label: string;
   secret: boolean;
+  emptyHint?: string;
 };
 
 export const PLATFORM_FIELDS: Record<PlatformId, FieldSpec[]> = {
@@ -24,6 +25,11 @@ export const PLATFORM_FIELDS: Record<PlatformId, FieldSpec[]> = {
   youtube: [
     { name: "clientId", label: "Client id", secret: false },
     { name: "clientSecret", label: "Client secret", secret: true },
-    { name: "refreshToken", label: "Refresh token", secret: true },
+    {
+      name: "refreshToken",
+      label: "Refresh token",
+      secret: true,
+      emptyHint: "Leave blank, then sign in",
+    },
   ],
 };

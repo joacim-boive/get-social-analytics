@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampLookback,
   PeriodError,
+  periodForDays,
   resolvePeriod,
 } from "../src/report/period.js";
 
@@ -21,6 +22,10 @@ describe("resolvePeriod", () => {
       start: "2026-09-15",
       end: "2026-10-12",
     });
+    expect(resolvePeriod({ preset: "last_30_days" }, now)).toMatchObject({
+      start: "2026-09-13",
+      end: "2026-10-12",
+    });
     expect(resolvePeriod({ preset: "this_month" }, now)).toMatchObject({
       start: "2026-10-01",
       end: "2026-10-12",
@@ -29,6 +34,18 @@ describe("resolvePeriod", () => {
       start: "2026-09-01",
       end: "2026-09-30",
     });
+  });
+
+  it("counts days back from today, including today", () => {
+    expect(periodForDays(7, now)).toEqual({
+      start: "2026-10-06",
+      end: "2026-10-12",
+    });
+    expect(periodForDays(1, now)).toEqual({
+      start: "2026-10-12",
+      end: "2026-10-12",
+    });
+    expect(() => periodForDays(0, now)).toThrow(PeriodError);
   });
 
   it("rejects an inverted custom range", () => {

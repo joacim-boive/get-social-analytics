@@ -1,17 +1,38 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { collectReports, normalizeQuery, platformCatalog, type AnalyticsArgs } from "../platforms/client.js";
+import {
+  collectReports,
+  describePlatforms,
+  normalizeQuery,
+  type AnalyticsArgs,
+} from "../platforms/client.js";
 import { formatReport } from "../report/format.js";
 import { PeriodError } from "../report/period.js";
 import type { CredentialStore } from "../store.js";
 
 const periodSchema = z.union([
   z.object({
-    preset: z.enum(["yesterday", "last_7_days", "last_28_days", "last_90_days", "this_month", "last_month"]),
+    preset: z.enum([
+      "yesterday",
+      "last_7_days",
+      "last_28_days",
+      "last_30_days",
+      "last_90_days",
+      "this_month",
+      "last_month",
+    ]),
   }),
   z.object({
-    start: z.string().describe("Inclusive start date, YYYY-MM-DD, in the server's local timezone."),
-    end: z.string().describe("Inclusive end date, YYYY-MM-DD, in the server's local timezone."),
+    start: z
+      .string()
+      .describe(
+        "Inclusive start date, YYYY-MM-DD, in the server's local timezone.",
+      ),
+    end: z
+      .string()
+      .describe(
+        "Inclusive end date, YYYY-MM-DD, in the server's local timezone.",
+      ),
   }),
 ]);
 
@@ -31,19 +52,12 @@ export function createMcpServer(store: CredentialStore): McpServer {
       inputSchema: {},
     },
     async () => {
-      const platforms = platformCatalog().map((entry) => {
-        const connection = store.get(entry.platform);
-        return {
-          platform: entry.platform,
-          connected: connection !== null,
-          accountName: connection?.account?.name ?? null,
-          accountHandle: connection?.account?.handle ?? null,
-          tokenExpiresAt: connection?.tokenExpiresAt ?? null,
-          capabilities: entry.capabilities,
-          limitations: entry.limitations,
-        };
-      });
-      return { content: [{ type: "text", text: JSON.stringify({ platforms }, null, 2) }] };
+      const platforms = describePlatforms(store);
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ platforms }, null, 2) },
+        ],
+      };
     },
   );
 
@@ -89,7 +103,8 @@ export function createMcpServer(store: CredentialStore): McpServer {
         contentLimit: z.number().int().min(1).max(50).optional(),
       },
     },
-    async (args) => runReport(store, { ...args, include: "content" }, "content"),
+    async (args) =>
+      runReport(store, { ...args, include: "content" }, "content"),
   );
 
   return server;
@@ -99,13 +114,28 @@ async function runReport(
   store: CredentialStore,
   args: AnalyticsArgs,
   mode: "analytics" | "content",
-): Promise<{ isError?: boolean; content: Array<{ type: "text"; text: string }> }> {
+): Promise<{
+  isError?: boolean;
+  content: Array<{ type: "text"; text: string }>;
+}> {
   try {
     const normalized = normalizeQuery(args);
-    const report = await collectReports(store, normalized.platforms, normalized.query, mode);
-    return { content: [{ type: "text", text: formatReport(report, normalized.format) }] };
+    const report = await collectReports(
+      store,
+      normalized.platforms,
+      normalized.query,
+      mode,
+    );
+    return {
+      content: [
+        { type: "text", text: formatReport(report, normalized.format) },
+      ],
+    };
   } catch (error) {
-    const message = error instanceof PeriodError ? error.message : "The analytics request could not be built.";
+    const message =
+      error instanceof PeriodError
+        ? error.message
+        : "The analytics request could not be built.";
     return { isError: true, content: [{ type: "text", text: message }] };
   }
 }

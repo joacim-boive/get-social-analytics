@@ -59,6 +59,7 @@ function formatContent(item: ContentItem): string {
 
 function aggregationLabel(aggregation: Metric["aggregation"]): string {
   if (aggregation === "period_total") return "period total";
+  if (aggregation === "period_average") return "period average";
   if (aggregation === "snapshot") return "snapshot";
   return "lifetime sum of items in range";
 }

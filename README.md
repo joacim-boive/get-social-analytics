@@ -20,9 +20,11 @@ npm install
 npm start
 ```
 
-Open [http://127.0.0.1:8787](http://127.0.0.1:8787). Set `PORT` if you need a different port. The settings page and the HTTP MCP endpoint both use that port, so the redirect URIs on the TikTok and YouTube cards change with it.
+Open [http://127.0.0.1:8787](http://127.0.0.1:8787). Set `PORT` if you need a different port. The settings page, the JSON API, and the HTTP MCP endpoint share that port, so the redirect URIs on the TikTok and YouTube cards change with it.
 
 Each card has the fields, a short note on where the credential comes from, **Save**, and **Test connection**. Test saves the fields, calls the platform, and shows the account name or the exact error. After a secret is saved, the field is cleared and the placeholder shows the last four characters. Leave a secret blank to keep the saved value.
+
+**Copy for an agent** pulls the platforms and day count you choose, then shows the same JSON as `GET /api/analytics`. Copy that text and paste it into the agent.
 
 ## Connect an agent
 
@@ -43,6 +45,40 @@ Stdio and the settings page share the same database. Add this to Cursor, Claude 
 While `npm start` is running, clients that speak [streamable HTTP](https://modelcontextprotocol.io) can use `http://127.0.0.1:8787/mcp`.
 
 Stdio writes protocol messages to stdout. Leave that stream alone if you are debugging the server.
+
+## HTTP API
+
+The API returns the same report as the MCP tools. A platform that is not connected, or that fails upstream, stays inside the report as `status: "error"` or `status: "not_configured"`. A bad query is HTTP 400. An unknown platform path is HTTP 404.
+
+| Method | Path                       | What it returns                                                               |
+| ------ | -------------------------- | ----------------------------------------------------------------------------- |
+| `GET`  | `/api/platforms`           | Saved accounts, expiry, and capabilities. No live social call and no secrets. |
+| `GET`  | `/api/analytics`           | Every platform.                                                               |
+| `GET`  | `/api/analytics/:platform` | One of `instagram`, `facebook`, `tiktok`, `youtube`.                          |
+| `GET`  | `/api/content`             | Ranked posts or videos for every platform.                                    |
+| `GET`  | `/api/content/:platform`   | Ranked posts or videos for one platform.                                      |
+
+`POST /api/analytics` and `POST /api/content` take the same JSON body as the matching MCP tool. A platform in the path overrides `platforms` in the body.
+
+Query parameters match the tool arguments:
+
+| Parameter      | Default       | Values                                                                                      |
+| -------------- | ------------- | ------------------------------------------------------------------------------------------- |
+| `platforms`    | `all`         | Comma-separated ids, or `all`. Ignored when the path names one platform.                    |
+| `period`       | `last_7_days` | `yesterday`, `last_7_days`, `last_28_days`, `last_90_days`, `this_month`, `last_month`      |
+| `start`, `end` |               | Inclusive `YYYY-MM-DD`. Use these instead of `period`.                                      |
+| `days`         |               | Whole number from 1 to 730, ending today and including today. Use this instead of `period`. |
+| `include`      | `both`        | `summary`, `content`, `both`. Content routes always return content.                         |
+| `contentLimit` | `10`          | `1`–`50`                                                                                    |
+| `format`       | `json`        | `json`, or `markdown` (`text/markdown`, daily series omitted)                               |
+
+```bash
+curl "http://127.0.0.1:8787/api/analytics/youtube?period=last_7_days"
+curl "http://127.0.0.1:8787/api/analytics?platforms=instagram,tiktok&start=2026-10-01&end=2026-10-07&include=summary"
+curl -X POST "http://127.0.0.1:8787/api/content/youtube" \
+  -H "Content-Type: application/json" \
+  -d '{"period":{"preset":"last_28_days"},"contentLimit":5}'
+```
 
 ## Tools
 
@@ -96,10 +132,10 @@ Shared summary keys, filled only when the mapping is real:
 ## Connect TikTok and YouTube
 
 1. Create the developer app and add the redirect URI printed on the card. With the default port those are `http://127.0.0.1:8787/oauth/tiktok/callback` and `http://127.0.0.1:8787/oauth/youtube/callback`.
-2. Save the client key or client id, and the client secret.
-3. Use **Sign in on this computer**.
+2. Save the client key or client id, and the client secret. Leave YouTube's refresh token blank.
+3. Use **Sign in on this computer**. Sign-in stores the YouTube refresh token.
 
-You can paste an access token and refresh token instead of signing in. Instagram and Facebook stay paste-only. A long-lived token from the [Graph API Explorer](https://developers.facebook.com/tools/explorer/) is the reliable personal setup for Meta.
+You can paste a YouTube refresh token instead of signing in. TikTok can be pasted the same way. Instagram and Facebook stay paste-only. A long-lived token from the [Graph API Explorer](https://developers.facebook.com/tools/explorer/) is the reliable personal setup for Meta.
 
 If Google does not return a refresh token, remove the app's access at [Google Account permissions](https://myaccount.google.com/permissions) and sign in again.
 

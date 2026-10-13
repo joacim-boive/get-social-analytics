@@ -33,6 +33,7 @@ const server = createServer((request, response) => {
 
 server.listen(port, "127.0.0.1", () => {
   console.log(`Settings http://127.0.0.1:${port}`);
+  console.log(`API      http://127.0.0.1:${port}/api/analytics`);
   console.log(`MCP      http://127.0.0.1:${port}/mcp`);
 });
 

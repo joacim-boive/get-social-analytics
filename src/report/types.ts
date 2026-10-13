@@ -6,6 +6,7 @@ export const PERIOD_PRESETS = [
   "yesterday",
   "last_7_days",
   "last_28_days",
+  "last_30_days",
   "last_90_days",
   "this_month",
   "last_month",
@@ -22,7 +23,7 @@ export type ResolvedPeriod = {
   notes: string[];
 };
 
-export type Aggregation = "period_total" | "snapshot" | "content_lifetime_sum";
+export type Aggregation = "period_total" | "period_average" | "snapshot" | "content_lifetime_sum";
 
 export type Metric = {
   key: string;
@@ -48,9 +49,22 @@ export type ContentItem = {
   metrics: Metric[];
 };
 
+export type UnavailableCode = "not_requested" | "unsupported" | "permission_denied" | "api_error" | "no_data";
+
 export type UnavailableMetric = {
   key: string;
   reason: string;
+  code?: UnavailableCode;
+  detail?: string | null;
+};
+
+export type ChannelCheck = {
+  intendedHandle: string;
+  authenticatedHandle: string | null;
+  authenticatedChannelId: string | null;
+  intendedChannelId: string | null;
+  match: boolean;
+  detail: string;
 };
 
 export type PlatformErrorBody = {
@@ -79,6 +93,7 @@ export type PlatformReport = {
   content?: ContentItem[];
   unavailable?: UnavailableMetric[];
   error?: PlatformErrorBody;
+  channelCheck?: ChannelCheck;
 };
 
 export type AnalyticsReport = {

@@ -27,13 +27,19 @@ const HELP: Record<PlatformId, { summary: string; docs: string }> = {
   },
   youtube: {
     summary:
-      "Enable YouTube Data API v3 and YouTube Analytics API. Create an OAuth client, register the redirect below, save the client id and secret, then use Sign in. Scopes: youtube.readonly and yt-analytics.readonly. An API key cannot supply period analytics.",
+      "Enable YouTube Data API v3 and YouTube Analytics API. Create an OAuth client, register the redirect below, then save the client id and secret. Leave the refresh token blank and use Sign in. That sign-in stores the refresh token. Scopes: youtube.readonly and yt-analytics.readonly.",
     docs: "https://developers.google.com/youtube/analytics/reference/reports/query",
   },
 };
 
-export function renderSettingsPage(args: { origin: string; connections: PublicConnection[]; notice: PageNotice | null }): string {
-  const cards = args.connections.map((connection) => renderCard(connection, args.origin)).join("");
+export function renderSettingsPage(args: {
+  origin: string;
+  connections: PublicConnection[];
+  notice: PageNotice | null;
+}): string {
+  const cards = args.connections
+    .map((connection) => renderCard(connection, args.origin))
+    .join("");
   const notice = args.notice
     ? `<p class="notice ${args.notice.tone}" role="status">${escapeHtml(args.notice.text)}</p>`
     : "";
@@ -47,7 +53,7 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
   <title>Social analytics</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Familjen+Grotesk:wght@420;560;650&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Familjen+Grotesk:wght@420;560;650&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet" />
   <style>
     :root {
       --paper: #f3ecdf;
@@ -102,6 +108,7 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
       border-top: 1px solid var(--line);
       font-size: 14px;
     }
+    .endpoint code { display: block; margin-top: 8px; }
     .endpoint code, .docs code {
       font-family: "IBM Plex Mono", ui-monospace, monospace;
       font-size: 12px;
@@ -165,10 +172,48 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
     }
     button.primary { background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
     button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
-    .text-button { color: var(--stamp); padding-left: 4px; }
+    button.text-button { background: transparent; border: 0; color: var(--stamp); padding-left: 4px; }
     .result { min-height: 1.2em; margin: 12px 0 0; font-size: 14px; }
     .result.error { color: var(--stamp); }
     .result.ok { color: var(--ok); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+    button.tab { background: transparent; color: var(--muted); border: 1px solid transparent; padding: 8px 14px; }
+    button.tab.is-active { color: var(--ink); background: var(--card); border-color: var(--ink); }
+    .choices { border: 0; margin: 14px 0 0; padding: 0; }
+    .choices legend { padding: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .choice-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .choice {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 14px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .choice:has(input:checked) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    .choice:has(input:focus-visible) { outline: 2px solid rgba(157, 28, 28, 0.35); }
+    .day-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .day-row input { width: 96px; }
+    button.day-pick { background: #fff; color: var(--ink); border: 1px solid var(--line); padding: 10px 14px; }
+    button.day-pick.is-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    .hint { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    textarea.report {
+      width: 100%;
+      min-height: 320px;
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      background: #fffdf8;
+      color: var(--ink);
+      resize: vertical;
+    }
     .notice { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
     .notice.error { color: var(--stamp); }
     .notice.ok { color: var(--ok); }
@@ -190,12 +235,22 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
       <p class="lede">Connect your own accounts once. Agents call this machine and get one report shape for every platform.</p>
       <div class="endpoint">
         <div>Settings stay on this computer.</div>
-        <code>${escapeHtml(args.origin)}/mcp</code>
+        <code>MCP ${escapeHtml(args.origin)}/mcp</code>
+        <code>API ${escapeHtml(args.origin)}/api/analytics</code>
       </div>
     </header>
-    <section class="cards">
-      ${notice}
-      ${cards}
+    <section class="workspace">
+      <div class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab is-active" type="button" role="tab" id="tab-connections" aria-selected="true" aria-controls="panel-connections" data-tab="connections">Connections</button>
+        <button class="tab" type="button" role="tab" id="tab-report" aria-selected="false" aria-controls="panel-report" data-tab="report">Copy for an agent</button>
+      </div>
+      <div id="panel-connections" role="tabpanel" aria-labelledby="tab-connections">
+        ${notice}
+        <div class="cards">${cards}</div>
+      </div>
+      <div id="panel-report" role="tabpanel" aria-labelledby="tab-report" hidden>
+        ${renderReportPanel(args.connections)}
+      </div>
     </section>
   </main>
   <script>
@@ -210,16 +265,11 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
         const result = form.querySelector(".result");
         result.textContent = action === "test" ? "Saving and testing…" : "Saving…";
         result.className = "result";
-        const payload = {};
-        for (const element of form.elements) {
-          if (!element.name || element.type === "submit") continue;
-          payload[element.name] = element.value;
-        }
         try {
           const response = await fetch(action === "test" ? "/api/connections/" + platform + "/test" : "/api/connections/" + platform, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(formPayload(form)),
           });
           const data = await response.json();
           if (data.connection) applyConnection(form, data.connection);
@@ -230,6 +280,131 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
           result.className = "result error";
         }
       });
+      const signIn = form.querySelector("[data-action=signin]");
+      if (!signIn) continue;
+      signIn.addEventListener("click", async () => {
+        const result = form.querySelector(".result");
+        result.textContent = "Saving, then opening sign-in…";
+        result.className = "result";
+        try {
+          const response = await fetch("/api/connections/" + form.dataset.platform, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formPayload(form)),
+          });
+          const data = await response.json();
+          if (data.connection) applyConnection(form, data.connection);
+          if (!response.ok || data.ok === false) {
+            result.textContent = data.message || "Save the client id and secret before signing in.";
+            result.className = "result error";
+            return;
+          }
+          window.location.href = "/oauth/" + form.dataset.platform + "/start";
+        } catch (error) {
+          result.textContent = "The settings server did not respond.";
+          result.className = "result error";
+        }
+      });
+    }
+
+    function formPayload(form) {
+      const payload = {};
+      for (const element of form.elements) {
+        if (!element.name || element.type === "submit" || element.type === "button") continue;
+        payload[element.name] = element.value;
+      }
+      return payload;
+    }
+
+    const tabButtons = document.querySelectorAll("[data-tab]");
+    for (const button of tabButtons) {
+      button.addEventListener("click", () => showTab(button.dataset.tab));
+    }
+
+    function showTab(name) {
+      for (const button of tabButtons) {
+        const selected = button.dataset.tab === name;
+        button.classList.toggle("is-active", selected);
+        button.setAttribute("aria-selected", selected ? "true" : "false");
+      }
+      document.getElementById("panel-connections").hidden = name !== "connections";
+      document.getElementById("panel-report").hidden = name !== "report";
+    }
+
+    const reportForm = document.getElementById("report-form");
+    const daysInput = document.getElementById("days");
+    const reportText = document.getElementById("report-text");
+    const copyButton = document.getElementById("copy-report");
+    const reportStatus = document.getElementById("report-status");
+    const dayPicks = document.querySelectorAll("[data-days]");
+
+    for (const pick of dayPicks) {
+      pick.addEventListener("click", () => {
+        daysInput.value = pick.dataset.days;
+        syncDayPicks();
+      });
+    }
+    daysInput.addEventListener("input", syncDayPicks);
+    syncDayPicks();
+
+    reportForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const selected = [];
+      for (const box of reportForm.querySelectorAll("input[name=platform]:checked")) selected.push(box.value);
+      const days = Number(daysInput.value);
+      if (selected.length === 0) {
+        reportStatus.textContent = "Choose at least one platform.";
+        reportStatus.className = "result error";
+        return;
+      }
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        reportStatus.textContent = "Days must be a whole number from 1 to 365.";
+        reportStatus.className = "result error";
+        return;
+      }
+      reportStatus.textContent = "Pulling the report…";
+      reportStatus.className = "result";
+      copyButton.disabled = true;
+      try {
+        const params = new URLSearchParams({
+          platforms: selected.join(","),
+          days: String(days),
+          include: "both",
+          contentLimit: "30",
+        });
+        const response = await fetch("/api/analytics?" + params.toString());
+        const data = await response.json();
+        if (!response.ok) {
+          reportStatus.textContent = data.error || "The report could not be built.";
+          reportStatus.className = "result error";
+          return;
+        }
+        reportText.value = JSON.stringify(data, null, 2);
+        copyButton.disabled = false;
+        reportStatus.textContent = "Ready to paste.";
+        reportStatus.className = "result ok";
+      } catch (error) {
+        reportStatus.textContent = "The settings server did not respond.";
+        reportStatus.className = "result error";
+      }
+    });
+
+    copyButton.addEventListener("click", async () => {
+      if (!reportText.value) return;
+      try {
+        await navigator.clipboard.writeText(reportText.value);
+        reportStatus.textContent = "Copied. Paste it into the agent.";
+        reportStatus.className = "result ok";
+      } catch (error) {
+        reportText.focus();
+        reportText.select();
+        reportStatus.textContent = "Clipboard is blocked. The report is selected — copy it from there.";
+        reportStatus.className = "result error";
+      }
+    });
+
+    function syncDayPicks() {
+      for (const pick of dayPicks) pick.classList.toggle("is-active", pick.dataset.days === daysInput.value);
     }
 
     function applyConnection(form, connection) {
@@ -248,7 +423,8 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
           continue;
         }
         input.value = "";
-        input.placeholder = field.set && field.last4 ? "Saved · ends in " + field.last4 : "Paste value";
+        const emptyHint = input.dataset.emptyHint || "Paste value";
+        input.placeholder = field.set && field.last4 ? "Saved · ends in " + field.last4 : emptyHint;
       }
     }
   </script>
@@ -256,26 +432,75 @@ export function renderSettingsPage(args: { origin: string; connections: PublicCo
 </html>`;
 }
 
+function renderReportPanel(connections: PublicConnection[]): string {
+  const anyConfigured = connections.some((connection) => connection.configured);
+  const choices = connections
+    .map((connection) => {
+      const checked = !anyConfigured || connection.configured ? " checked" : "";
+      return `<label class="choice"><input type="checkbox" name="platform" value="${connection.platform}"${checked} />${platformLabel(connection.platform)}</label>`;
+    })
+    .join("");
+  return `<form class="card" id="report-form">
+    <h2>Copy for an agent</h2>
+    <p class="docs">Choose the accounts and how many days. The text below is the same JSON as <code>/api/analytics</code>.</p>
+    <fieldset class="choices">
+      <legend>Platforms</legend>
+      <div class="choice-row">${choices}</div>
+    </fieldset>
+    <label for="days">Days</label>
+    <div class="day-row">
+      <input id="days" name="days" type="number" inputmode="numeric" min="1" max="365" value="30" />
+      <button class="day-pick" type="button" data-days="7">7</button>
+      <button class="day-pick" type="button" data-days="30">30</button>
+      <button class="day-pick" type="button" data-days="28">28</button>
+      <button class="day-pick" type="button" data-days="90">90</button>
+    </div>
+    <p class="hint">Includes today. A platform that cannot store the whole range says so in the report.</p>
+    <div class="actions">
+      <button class="primary" type="submit">Pull report</button>
+      <button class="secondary" type="button" id="copy-report" disabled>Copy</button>
+    </div>
+    <p class="result" id="report-status" aria-live="polite"></p>
+    <textarea class="report" id="report-text" readonly spellcheck="false" placeholder="The report will land here, ready to paste."></textarea>
+  </form>`;
+}
+
 function renderCard(connection: PublicConnection, origin: string): string {
   const platform = connection.platform;
   const help = HELP[platform];
-  const status = connection.account ? "Connected" : connection.configured ? "Saved" : "Not connected";
+  const status = connection.account
+    ? "Connected"
+    : connection.configured
+      ? "Saved"
+      : "Not connected";
   const pillClass = connection.account ? "pill ok" : "pill";
-  const handle = connection.account?.handle ? ` @${connection.account.handle.replace(/^@/, "")}` : "";
-  const expiry = connection.tokenExpiresAt ? ` · token until ${connection.tokenExpiresAt.slice(0, 10)}` : "";
-  const accountLine = connection.account ? `${connection.account.name}${handle}${expiry}` : expiry;
+  const handle = connection.account?.handle
+    ? ` @${connection.account.handle.replace(/^@/, "")}`
+    : "";
+  const expiry = connection.tokenExpiresAt
+    ? ` · token until ${connection.tokenExpiresAt.slice(0, 10)}`
+    : "";
+  const accountLine = connection.account
+    ? `${connection.account.name}${handle}${expiry}`
+    : expiry;
   const fields = PLATFORM_FIELDS[platform]
     .map((field) => {
       const state = connection.fields[field.name];
       const placeholder = field.secret
         ? state?.set && state.last4
           ? `Saved · ends in ${state.last4}`
-          : "Paste value"
+          : (field.emptyHint ?? "Paste value")
         : "";
-      const value = !field.secret && state?.publicValue ? ` value="${escapeHtml(state.publicValue)}"` : "";
+      const value =
+        !field.secret && state?.publicValue
+          ? ` value="${escapeHtml(state.publicValue)}"`
+          : "";
       const type = field.secret ? "password" : "text";
+      const emptyHint = field.emptyHint
+        ? ` data-empty-hint="${escapeHtml(field.emptyHint)}"`
+        : "";
       return `<label for="${platform}-${field.name}">${escapeHtml(field.label)}</label>
-        <input id="${platform}-${field.name}" name="${field.name}" type="${type}" autocomplete="off" spellcheck="false" placeholder="${escapeHtml(placeholder)}"${value} />`;
+        <input id="${platform}-${field.name}" name="${field.name}" type="${type}" autocomplete="off" spellcheck="false" placeholder="${escapeHtml(placeholder)}"${value}${emptyHint} />`;
     })
     .join("");
   const redirect =
@@ -284,7 +509,7 @@ function renderCard(connection: PublicConnection, origin: string): string {
       : "";
   const signIn =
     platform === "tiktok" || platform === "youtube"
-      ? `<a class="text-button" href="/oauth/${platform}/start">Sign in on this computer</a>`
+      ? `<button class="text-button" type="button" data-action="signin">Sign in on this computer</button>`
       : "";
   return `<form class="card" data-platform="${platform}">
     <div class="card-head">
