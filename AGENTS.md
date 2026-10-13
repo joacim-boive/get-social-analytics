@@ -18,7 +18,8 @@ Node.js 22 or newer. `npm run stdio` must not write logs to stdout. Protocol tra
 
 ## Layout
 
-- `src/http.ts` — HTTP entry. Settings routes, `/api/analytics`, and `/mcp`. Binds to `127.0.0.1`.
+- `src/http.ts` — local HTTP entry. Settings routes, `/api/analytics`, and `/mcp`. Binds to `127.0.0.1`.
+- `src/server.ts` — Vercel entry. Same settings app, exported for the Hono builder. On Vercel the database is `/tmp/get-social-analytics/analytics.sqlite` and does not survive a new instance.
 - `src/stdio.ts` — stdio entry.
 - `src/api/` — HTTP analytics and content routes. JSON is the comparison document. `format=markdown` stays the agent markdown report.
 - `src/mcp/server.ts` — `list_platforms`, `get_analytics`, `get_content`.
