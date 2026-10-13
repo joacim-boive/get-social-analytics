@@ -2,6 +2,7 @@ import { createClient, type Client } from "@libsql/client";
 import { randomBytes } from "node:crypto";
 import { isPlatformId } from "./report/types.js";
 import {
+  isOAuthProvider,
   openStore,
   type CredentialStore,
   type PersistedConnection,
@@ -61,17 +62,23 @@ export async function openHostedStore(userId: string): Promise<CredentialStore> 
         args: [Date.now() - oauthTtlMs],
       });
     },
+    async peekOAuth(state) {
+      const result = await remote.execute({
+        sql: "SELECT provider, verifier, redirect_uri, created_at FROM oauth_pending WHERE state = ? AND user_id = ?",
+        args: [state, userId],
+      });
+      return readOAuth(result.rows[0]);
+    },
     async takeOAuth(state) {
       const result = await remote.execute({
         sql: "SELECT provider, verifier, redirect_uri, created_at FROM oauth_pending WHERE state = ? AND user_id = ?",
         args: [state, userId],
       });
       await remote.execute({
-        sql: "DELETE FROM oauth_pending WHERE state = ?",
-        args: [state],
+        sql: "DELETE FROM oauth_pending WHERE state = ? AND user_id = ?",
+        args: [state, userId],
       });
-      const row = result.rows[0];
-      return readOAuth(row);
+      return readOAuth(result.rows[0]);
     },
     drain: () => chain,
     close() {
@@ -213,7 +220,7 @@ function readOAuth(row: unknown): StoredOAuth | null {
   const verifier = text(record, "verifier");
   const redirectUri = text(record, "redirect_uri");
   const createdAt = numberValue(record.created_at);
-  if ((provider !== "tiktok" && provider !== "youtube") || !verifier || !redirectUri || createdAt === null) {
+  if (!provider || !isOAuthProvider(provider) || !verifier || !redirectUri || createdAt === null) {
     return null;
   }
   if (Date.now() - createdAt > oauthTtlMs) return null;

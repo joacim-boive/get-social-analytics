@@ -3,13 +3,23 @@ import { createHash, randomBytes } from "node:crypto";
 import { registerDataRoutes } from "../api/routes.js";
 import { getClient } from "../platforms/client.js";
 import { PlatformApiError } from "../platforms/errors.js";
+import {
+  encodeFacebookPages,
+  exchangeFacebookCode,
+  exchangeInstagramCode,
+  facebookAuthorizeUrl,
+  instagramAuthorizeUrl,
+  parseFacebookPages,
+} from "../platforms/meta-oauth.js";
 import { exchangeTikTokCode } from "../platforms/tiktok.js";
 import { exchangeYouTubeCode } from "../platforms/youtube.js";
 import type { PlatformId } from "../report/types.js";
-import { isPlatformId } from "../report/types.js";
-import type { CredentialStore } from "../store.js";
+import { platformLabel, isPlatformId } from "../report/types.js";
+import { isOAuthProvider, type CredentialStore, type OAuthProvider } from "../store.js";
+import { isRecord } from "../util.js";
+import { loginReady, serverApps } from "./apps.js";
 import { assertAllowedOrigin, requestOrigin } from "./origin.js";
-import { renderSettingsPage, type PageNotice } from "./page.js";
+import { renderSettingsPage, type PageChoice, type PageNotice } from "./page.js";
 import { listPublic, toPublic } from "./public.js";
 import { saveConnection, SettingsError } from "./save.js";
 
@@ -24,15 +34,29 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
 
   app.get("/favicon.ico", (c) => c.body(null, 204));
 
-  app.get("/", (c) => {
+  app.get("/", async (c) => {
     const origin = requestOrigin(c.req.url, c.req.raw.headers);
+    const query = c.req.query();
+    const pageChoice = await readPageChoice(store, query.choose, query.state);
+    const notice = pageChoice
+      ? null
+      : query.choose === "facebook"
+        ? { tone: "error" as const, text: "That Page choice expired. Sign in again." }
+        : readNotice(query);
     return c.html(
       renderSettingsPage({
         origin,
         connections: listPublic(store),
-        notice: readNotice(c.req.query()),
+        notice,
         viewer: options.viewer ?? null,
         publishableKey: options.publishableKey ?? null,
+        login: {
+          instagram: loginReady("instagram"),
+          facebook: loginReady("facebook"),
+          tiktok: loginReady("tiktok"),
+          youtube: loginReady("youtube"),
+        },
+        pageChoice,
       }),
     );
   });
@@ -71,7 +95,18 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
       return c.json({ ok: false, message: "Unknown platform." }, 404);
     try {
       const body: unknown = await c.req.json();
-      saveConnection(store, platform, body);
+      if (!isBlankForm(body)) {
+        saveConnection(store, platform, body);
+      } else if (!store.get(platform)) {
+        return c.json(
+          {
+            ok: false,
+            message: "Sign in or save credentials first.",
+            connection: toPublic(store, platform),
+          },
+          400,
+        );
+      }
     } catch (error) {
       return c.json(
         {
@@ -107,50 +142,20 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
       const redirectUri = oauthRedirect(origin, provider);
       const state = randomBytes(16).toString("base64url");
       const verifier = pkce();
+      const url = authorizeUrl({
+        provider,
+        store,
+        redirectUri,
+        state,
+        challenge: verifier.challenge,
+      });
       await store.saveOAuth(state, {
         provider,
         verifier: verifier.verifier,
         redirectUri,
         createdAt: Date.now(),
       });
-      if (provider === "tiktok") {
-        const connection = store.get("tiktok");
-        if (!connection)
-          return c.redirect(
-            errorRedirect(provider, "Save the client key and secret first."),
-          );
-        const url = new URL("https://www.tiktok.com/v2/auth/authorize/");
-        url.searchParams.set("client_key", connection.credentials.clientKey);
-        url.searchParams.set(
-          "scope",
-          "user.info.basic,user.info.stats,video.list",
-        );
-        url.searchParams.set("response_type", "code");
-        url.searchParams.set("redirect_uri", redirectUri);
-        url.searchParams.set("state", state);
-        url.searchParams.set("code_challenge", verifier.challenge);
-        url.searchParams.set("code_challenge_method", "S256");
-        return c.redirect(url.toString());
-      }
-      const connection = store.get("youtube");
-      if (!connection)
-        return c.redirect(
-          errorRedirect(provider, "Save the client id and secret first."),
-        );
-      const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-      url.searchParams.set("client_id", connection.credentials.clientId);
-      url.searchParams.set("redirect_uri", redirectUri);
-      url.searchParams.set("response_type", "code");
-      url.searchParams.set(
-        "scope",
-        "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly",
-      );
-      url.searchParams.set("access_type", "offline");
-      url.searchParams.set("prompt", "consent");
-      url.searchParams.set("state", state);
-      url.searchParams.set("code_challenge", verifier.challenge);
-      url.searchParams.set("code_challenge_method", "S256");
-      return c.redirect(url.toString());
+      return c.redirect(url);
     } catch (error) {
       return c.redirect(errorRedirect(provider, errorMessage(error)));
     }
@@ -176,68 +181,37 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
         errorRedirect(provider, "The platform did not return a code."),
       );
     try {
-      if (provider === "tiktok") {
-        const existing = store.get("tiktok");
-        if (!existing)
-          return c.redirect(
-            errorRedirect(provider, "Save the client key and secret first."),
-          );
-        const exchanged = await exchangeTikTokCode({
-          clientKey: existing.credentials.clientKey,
-          clientSecret: existing.credentials.clientSecret,
-          code,
-          redirectUri: pending.redirectUri,
-          codeVerifier: pending.verifier,
-        });
-        store.save(
-          "tiktok",
-          {
-            clientKey: existing.credentials.clientKey,
-            clientSecret: existing.credentials.clientSecret,
-            accessToken: exchanged.accessToken,
-            refreshToken: exchanged.refreshToken,
-            openId: exchanged.openId ?? existing.credentials.openId,
-          },
-          { account: existing.account, tokenExpiresAt: exchanged.expiresAt },
-        );
-      } else {
-        const existing = store.get("youtube");
-        if (!existing)
-          return c.redirect(
-            errorRedirect(provider, "Save the client id and secret first."),
-          );
-        const exchanged = await exchangeYouTubeCode({
-          clientId: existing.credentials.clientId,
-          clientSecret: existing.credentials.clientSecret,
-          code,
-          redirectUri: pending.redirectUri,
-          codeVerifier: pending.verifier,
-        });
-        const refreshToken =
-          exchanged.refreshToken ?? existing.credentials.refreshToken;
-        if (!refreshToken) {
-          return c.redirect(
-            errorRedirect(
-              provider,
-              "Google did not return a refresh token. Remove the app's access and sign in again.",
-            ),
-          );
-        }
-        store.save(
-          "youtube",
-          {
-            clientId: existing.credentials.clientId,
-            clientSecret: existing.credentials.clientSecret,
-            refreshToken,
-            accessToken: exchanged.accessToken,
-          },
-          { account: existing.account, tokenExpiresAt: exchanged.expiresAt },
-        );
-      }
+      const choice = await finishSignIn(store, provider, pending.redirectUri, pending.verifier, code);
+      if (choice) return c.redirect(`/?choose=facebook&state=${encodeURIComponent(choice)}`);
       await getClient(provider).test(store);
       return c.redirect(`/?connected=${provider}`);
     } catch (error) {
       return c.redirect(errorRedirect(provider, errorMessage(error)));
+    }
+  });
+
+  app.post("/oauth/facebook/choose", async (c) => {
+    const body = await c.req.parseBody();
+    const state = typeof body.state === "string" ? body.state : "";
+    const pageId = typeof body.pageId === "string" ? body.pageId : "";
+    const pending = state ? await store.takeOAuth(state) : null;
+    if (!pending || pending.provider !== "facebook") {
+      return c.redirect(errorRedirect("facebook", "That Page choice expired. Sign in again."));
+    }
+    const page = parseFacebookPages(pending.verifier)?.find((entry) => entry.id === pageId);
+    if (!page) {
+      return c.redirect(errorRedirect("facebook", "Choose a Page this account can analyze."));
+    }
+    try {
+      store.save(
+        "facebook",
+        { pageAccessToken: page.accessToken, pageId: page.id },
+        { tokenExpiresAt: null },
+      );
+      await getClient("facebook").test(store);
+      return c.redirect("/?connected=facebook");
+    } catch (error) {
+      return c.redirect(errorRedirect("facebook", errorMessage(error)));
     }
   });
 
@@ -248,19 +222,18 @@ function readPlatform(value: string): PlatformId | null {
   return isPlatformId(value) ? value : null;
 }
 
-function readOAuthProvider(value: string): "tiktok" | "youtube" | null {
-  if (value === "tiktok" || value === "youtube") return value;
-  return null;
+function readOAuthProvider(value: string): OAuthProvider | null {
+  return isOAuthProvider(value) ? value : null;
 }
 
 function readNotice(
   query: Record<string, string | undefined>,
 ): PageNotice | null {
-  if (query.connected === "tiktok" || query.connected === "youtube") {
+  if (query.connected && isPlatformId(query.connected)) {
     const extra = query.message ? ` ${query.message}` : "";
     return {
       tone: "ok",
-      text: `${query.connected === "tiktok" ? "TikTok" : "YouTube"} is signed in.${extra}`,
+      text: `${platformLabel(query.connected)} is signed in.${extra}`,
     };
   }
   if (query.error && query.message)
@@ -268,13 +241,213 @@ function readNotice(
   return null;
 }
 
+async function readPageChoice(
+  store: CredentialStore,
+  choose: string | undefined,
+  state: string | undefined,
+): Promise<PageChoice | null> {
+  if (choose !== "facebook" || !state) return null;
+  const pending = await store.peekOAuth(state);
+  if (!pending || pending.provider !== "facebook") return null;
+  const pages = parseFacebookPages(pending.verifier);
+  if (!pages) return null;
+  return {
+    state,
+    pages: pages.map((page) => ({ id: page.id, name: page.name })),
+  };
+}
+
+function authorizeUrl(args: {
+  provider: OAuthProvider;
+  store: CredentialStore;
+  redirectUri: string;
+  state: string;
+  challenge: string;
+}): string {
+  const apps = serverApps();
+  if (args.provider === "instagram") {
+    if (!apps.meta) throw new SettingsError("Instagram sign-in is not configured on this server.");
+    return instagramAuthorizeUrl({
+      appId: apps.meta.appId,
+      redirectUri: args.redirectUri,
+      state: args.state,
+    });
+  }
+  if (args.provider === "facebook") {
+    if (!apps.meta) throw new SettingsError("Facebook sign-in is not configured on this server.");
+    return facebookAuthorizeUrl({
+      appId: apps.meta.appId,
+      redirectUri: args.redirectUri,
+      state: args.state,
+    });
+  }
+  if (args.provider === "tiktok") {
+    const app = apps.tiktok ?? storedTikTok(args.store);
+    if (!app) throw new SettingsError("Save the client key and secret first.");
+    const url = new URL("https://www.tiktok.com/v2/auth/authorize/");
+    url.searchParams.set("client_key", app.clientKey);
+    url.searchParams.set("scope", "user.info.basic,user.info.stats,video.list");
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("redirect_uri", args.redirectUri);
+    url.searchParams.set("state", args.state);
+    url.searchParams.set("code_challenge", args.challenge);
+    url.searchParams.set("code_challenge_method", "S256");
+    return url.toString();
+  }
+  const app = apps.youtube ?? storedYouTube(args.store);
+  if (!app) throw new SettingsError("Save the client id and secret first.");
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.searchParams.set("client_id", app.clientId);
+  url.searchParams.set("redirect_uri", args.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set(
+    "scope",
+    "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly",
+  );
+  url.searchParams.set("access_type", "offline");
+  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("state", args.state);
+  url.searchParams.set("code_challenge", args.challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  return url.toString();
+}
+
+async function finishSignIn(
+  store: CredentialStore,
+  provider: OAuthProvider,
+  redirectUri: string,
+  verifier: string,
+  code: string,
+): Promise<string | null> {
+  const apps = serverApps();
+  if (provider === "instagram") {
+    if (!apps.meta) throw new SettingsError("Instagram sign-in is not configured on this server.");
+    const exchanged = await exchangeInstagramCode({
+      appId: apps.meta.appId,
+      appSecret: apps.meta.appSecret,
+      code,
+      redirectUri,
+    });
+    store.save(
+      "instagram",
+      { accessToken: exchanged.accessToken, appSecret: apps.meta.appSecret },
+      { tokenExpiresAt: exchanged.expiresAt },
+    );
+    return null;
+  }
+  if (provider === "facebook") {
+    if (!apps.meta) throw new SettingsError("Facebook sign-in is not configured on this server.");
+    const pages = await exchangeFacebookCode({
+      appId: apps.meta.appId,
+      appSecret: apps.meta.appSecret,
+      code,
+      redirectUri,
+    });
+    const only = pages.length === 1 ? pages[0] : null;
+    if (!only) {
+      const choice = randomBytes(16).toString("base64url");
+      await store.saveOAuth(choice, {
+        provider: "facebook",
+        verifier: encodeFacebookPages(pages),
+        redirectUri,
+        createdAt: Date.now(),
+      });
+      return choice;
+    }
+    store.save(
+      "facebook",
+      { pageAccessToken: only.accessToken, pageId: only.id },
+      { tokenExpiresAt: null },
+    );
+    return null;
+  }
+  if (provider === "tiktok") {
+    const existing = store.get("tiktok");
+    const app = apps.tiktok ?? storedTikTok(store);
+    if (!app) throw new SettingsError("Save the client key and secret first.");
+    const exchanged = await exchangeTikTokCode({
+      clientKey: app.clientKey,
+      clientSecret: app.clientSecret,
+      code,
+      redirectUri,
+      codeVerifier: verifier,
+    });
+    store.save(
+      "tiktok",
+      {
+        clientKey: app.clientKey,
+        clientSecret: app.clientSecret,
+        accessToken: exchanged.accessToken,
+        refreshToken: exchanged.refreshToken,
+        openId: exchanged.openId ?? existing?.credentials.openId ?? null,
+      },
+      { account: existing?.account ?? null, tokenExpiresAt: exchanged.expiresAt },
+    );
+    return null;
+  }
+  const existing = store.get("youtube");
+  const app = apps.youtube ?? storedYouTube(store);
+  if (!app) throw new SettingsError("Save the client id and secret first.");
+  const exchanged = await exchangeYouTubeCode({
+    clientId: app.clientId,
+    clientSecret: app.clientSecret,
+    code,
+    redirectUri,
+    codeVerifier: verifier,
+  });
+  const sameClient = existing?.credentials.clientId === app.clientId;
+  const refreshToken =
+    exchanged.refreshToken ?? (sameClient ? (existing?.credentials.refreshToken ?? null) : null);
+  if (!refreshToken) {
+    throw new SettingsError(
+      "Google did not return a refresh token. Remove the app's access and sign in again.",
+    );
+  }
+  store.save(
+    "youtube",
+    {
+      clientId: app.clientId,
+      clientSecret: app.clientSecret,
+      refreshToken,
+      accessToken: exchanged.accessToken,
+    },
+    { account: existing?.account ?? null, tokenExpiresAt: exchanged.expiresAt },
+  );
+  return null;
+}
+
+function storedTikTok(store: CredentialStore): { clientKey: string; clientSecret: string } | null {
+  const existing = store.get("tiktok");
+  if (!existing) return null;
+  return {
+    clientKey: existing.credentials.clientKey,
+    clientSecret: existing.credentials.clientSecret,
+  };
+}
+
+function storedYouTube(store: CredentialStore): { clientId: string; clientSecret: string } | null {
+  const existing = store.get("youtube");
+  if (!existing) return null;
+  return {
+    clientId: existing.credentials.clientId,
+    clientSecret: existing.credentials.clientSecret,
+  };
+}
+
 function errorRedirect(provider: string, message: string): string {
   return `/?error=${encodeURIComponent(provider)}&message=${encodeURIComponent(message)}`;
 }
 
-function oauthRedirect(origin: string, provider: "tiktok" | "youtube"): string {
+function oauthRedirect(origin: string, provider: OAuthProvider): string {
   assertAllowedOrigin(origin);
   return `${origin}/oauth/${provider}/callback`;
+}
+
+function isBlankForm(body: unknown): boolean {
+  if (!isRecord(body)) return true;
+  return Object.values(body).every(
+    (value) => typeof value !== "string" || value.trim() === "",
+  );
 }
 
 function pkce(): { verifier: string; challenge: string } {
