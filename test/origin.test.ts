@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { clerkAccountPortal } from "../src/auth.js";
+import {
+  assertAllowedOrigin,
+  isAllowedOrigin,
+  requestOrigin,
+} from "../src/settings/origin.js";
 import { SettingsError } from "../src/settings/save.js";
-import { assertAllowedOrigin, isAllowedOrigin, requestOrigin } from "../src/settings/origin.js";
 
 afterEach(() => {
   delete process.env.APP_ORIGIN;
@@ -13,9 +17,13 @@ describe("hosted origins", () => {
   it("allows localhost and the production site", () => {
     process.env.APP_ORIGIN = "https://get-social-analytics.vercel.app";
     expect(isAllowedOrigin("http://127.0.0.1:8787")).toBe(true);
-    expect(isAllowedOrigin("https://get-social-analytics.vercel.app")).toBe(true);
+    expect(isAllowedOrigin("https://get-social-analytics.vercel.app")).toBe(
+      true,
+    );
     expect(isAllowedOrigin("https://evil.example")).toBe(false);
-    expect(() => assertAllowedOrigin("https://evil.example")).toThrow(SettingsError);
+    expect(() => assertAllowedOrigin("https://evil.example")).toThrow(
+      SettingsError,
+    );
   });
 
   it("uses the Clerk account portal for a development publishable key", () => {

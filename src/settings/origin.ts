@@ -10,7 +10,10 @@ export function productionOrigin(): string {
 
 export function requestOrigin(requestUrl: string, headers: Headers): string {
   const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const forwardedProto = headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
   if (forwardedHost) return `${forwardedProto || "https"}://${forwardedHost}`;
   try {
     const url = new URL(requestUrl);
