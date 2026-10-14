@@ -23,7 +23,7 @@ export function saveConnection(store: CredentialStore, platform: PlatformId, bod
     saveTikTok(store, body);
     return;
   }
-  saveYouTube(store, body);
+  throw new SettingsError("Sign in to connect YouTube.");
 }
 
 function saveInstagram(store: CredentialStore, body: Record<string, unknown>): void {
@@ -64,23 +64,6 @@ function saveTikTok(store: CredentialStore, body: Record<string, unknown>): void
   );
 }
 
-function saveYouTube(store: CredentialStore, body: Record<string, unknown>): void {
-  const existing = store.get("youtube");
-  const clientId = publicField(body, "clientId", existing?.credentials.clientId ?? null, "Client id");
-  const clientSecret = secretField(body, "clientSecret", existing?.credentials.clientSecret ?? null, "Client secret");
-  const refreshToken = optionalSecret(body, "refreshToken", existing?.credentials.refreshToken ?? null);
-  store.save(
-    "youtube",
-    {
-      clientId: clientId.value,
-      clientSecret: clientSecret.value,
-      refreshToken: refreshToken.value,
-      accessToken: refreshToken.replaced ? null : (existing?.credentials.accessToken ?? null),
-    },
-    refreshToken.replaced ? { tokenExpiresAt: null } : {},
-  );
-}
-
 function secretField(
   body: Record<string, unknown>,
   key: string,
@@ -92,16 +75,6 @@ function secretField(
     if (!existing) throw new SettingsError(`${label} is required.`);
     return { value: existing, replaced: false };
   }
-  return { value: incoming, replaced: true };
-}
-
-function optionalSecret(
-  body: Record<string, unknown>,
-  key: string,
-  existing: string | null,
-): { value: string | null; replaced: boolean } {
-  const incoming = readString(body, key);
-  if (!incoming || incoming.startsWith("••••")) return { value: existing, replaced: false };
   return { value: incoming, replaced: true };
 }
 

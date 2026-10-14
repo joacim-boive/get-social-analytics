@@ -1,4 +1,5 @@
 import type { StoredConnection, YouTubeCredentials } from "../credentials.js";
+import { youtubeApp } from "../oauth-apps.js";
 import { metric, okReport, rankContent, withNotes } from "../report/build.js";
 import type {
   AccountProfile,
@@ -584,16 +585,24 @@ async function requestRefresh(credentials: YouTubeCredentials): Promise<{
   if (!credentials.refreshToken) {
     throw new PlatformApiError(
       "not_configured",
-      "YouTube does not have a refresh token yet.",
-      "Save the client id and secret, then use Sign in on the settings page.",
+      "YouTube is not connected.",
+      "Sign in with YouTube on the settings page.",
+    );
+  }
+  const app = youtubeApp();
+  if (!app) {
+    throw new PlatformApiError(
+      "not_configured",
+      "YouTube sign-in is not configured on this server.",
+      "Set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET.",
     );
   }
   const { status, body } = await requestJson(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: credentials.clientId,
-      client_secret: credentials.clientSecret,
+      client_id: app.clientId,
+      client_secret: app.clientSecret,
       refresh_token: credentials.refreshToken,
       grant_type: "refresh_token",
     }),

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { parseCredentials } from "../src/credentials.js";
 import { saveConnection, SettingsError } from "../src/settings/save.js";
 import { openStore, type CredentialStore } from "../src/store.js";
 
@@ -14,50 +15,31 @@ afterEach(() => {
 });
 
 describe("YouTube credential save", () => {
-  it("saves the client id and secret before a refresh token exists", () => {
-    const store = tempStore();
-    saveConnection(store, "youtube", {
-      clientId: "client-id.apps.googleusercontent.com",
-      clientSecret: "secret-value",
-      refreshToken: "",
-    });
-    const saved = store.get("youtube");
-    expect(saved?.credentials.clientId).toBe(
-      "client-id.apps.googleusercontent.com",
-    );
-    expect(saved?.credentials.clientSecret).toBe("secret-value");
-    expect(saved?.credentials.refreshToken).toBeNull();
-    store.close();
-  });
-
-  it("keeps a refresh token obtained by sign-in when the field is left blank", () => {
-    const store = tempStore();
-    saveConnection(store, "youtube", {
-      clientId: "client-id.apps.googleusercontent.com",
-      clientSecret: "secret-value",
-      refreshToken: "refresh-from-google",
-    });
-    saveConnection(store, "youtube", {
-      clientId: "client-id.apps.googleusercontent.com",
-      clientSecret: "",
-      refreshToken: "",
-    });
-    expect(store.get("youtube")?.credentials.refreshToken).toBe(
-      "refresh-from-google",
-    );
-    store.close();
-  });
-
-  it("still requires the client id and secret", () => {
+  it("asks for sign-in instead of a pasted client", () => {
     const store = tempStore();
     expect(() =>
       saveConnection(store, "youtube", {
-        clientId: "",
-        clientSecret: "",
+        clientId: "client-id.apps.googleusercontent.com",
+        clientSecret: "secret-value",
         refreshToken: "",
       }),
     ).toThrow(SettingsError);
+    expect(store.get("youtube")).toBeNull();
     store.close();
+  });
+
+  it("reads an older row without keeping the app secret", () => {
+    expect(
+      parseCredentials("youtube", {
+        clientId: "old-client",
+        clientSecret: "old-secret",
+        refreshToken: "refresh-1",
+        accessToken: "access-1",
+      }),
+    ).toEqual({
+      refreshToken: "refresh-1",
+      accessToken: "access-1",
+    });
   });
 });
 

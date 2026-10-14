@@ -3,13 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSettingsApp } from "../src/settings/routes.js";
-import { saveConnection } from "../src/settings/save.js";
 import { openStore, type CredentialStore } from "../src/store.js";
 
 const directories: string[] = [];
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete process.env.YOUTUBE_CLIENT_ID;
+  delete process.env.YOUTUBE_CLIENT_SECRET;
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -49,11 +50,12 @@ describe("analytics HTTP API", () => {
         throw new Error("live API");
       }),
     );
+    process.env.YOUTUBE_CLIENT_ID = "client-id.apps.googleusercontent.com";
+    process.env.YOUTUBE_CLIENT_SECRET = "secret-value";
     const { app, store } = tempApp();
-    saveConnection(store, "youtube", {
-      clientId: "client-id.apps.googleusercontent.com",
-      clientSecret: "secret-value",
-      refreshToken: "",
+    store.save("youtube", {
+      refreshToken: "refresh-value",
+      accessToken: null,
     });
     const response = await app.request(
       "http://127.0.0.1/api/analytics?platforms=instagram,youtube&include=summary",
@@ -63,8 +65,9 @@ describe("analytics HTTP API", () => {
     expect([
       body.platforms.instagram.status,
       body.platforms.youtube.status,
-    ]).toEqual(["unavailable", "unavailable"]);
+    ]).toEqual(["unavailable", "error"]);
     expect(JSON.stringify(body)).not.toContain("secret-value");
+    expect(JSON.stringify(body)).not.toContain("refresh-value");
     store.close();
   });
 
@@ -142,10 +145,9 @@ describe("analytics HTTP API", () => {
 
   it("lists platforms without secrets", async () => {
     const { app, store } = tempApp();
-    saveConnection(store, "youtube", {
-      clientId: "client-id.apps.googleusercontent.com",
-      clientSecret: "secret-value",
-      refreshToken: "",
+    store.save("youtube", {
+      refreshToken: "refresh-secret-value",
+      accessToken: null,
     });
     const response = await app.request("http://127.0.0.1/api/platforms");
     expect(response.status).toBe(200);
@@ -158,10 +160,7 @@ describe("analytics HTTP API", () => {
       accountName: null,
       tokenExpiresAt: null,
     });
-    expect(JSON.stringify(body)).not.toContain("secret-value");
-    expect(JSON.stringify(body)).not.toContain(
-      "client-id.apps.googleusercontent.com",
-    );
+    expect(JSON.stringify(body)).not.toContain("refresh-secret-value");
     store.close();
   });
 });

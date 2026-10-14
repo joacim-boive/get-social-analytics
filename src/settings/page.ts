@@ -27,7 +27,7 @@ const HELP: Record<PlatformId, { summary: string; docs: string }> = {
   },
   youtube: {
     summary:
-      "Enable YouTube Data API v3 and YouTube Analytics API. Create an OAuth client, register the redirect below, then save the client id and secret. Leave the refresh token blank and use Sign in. That sign-in stores the refresh token. Scopes: youtube.readonly and yt-analytics.readonly.",
+      "Sign in with the Google account that owns the channel. This server keeps the refresh token. Scopes: youtube.readonly and yt-analytics.readonly.",
     docs: "https://developers.google.com/youtube/analytics/reference/reports/query",
   },
 };
@@ -295,6 +295,10 @@ export function renderSettingsPage(args: {
       const signIn = form.querySelector("[data-action=signin]");
       if (!signIn) continue;
       signIn.addEventListener("click", async () => {
+        if (form.dataset.platform === "youtube") {
+          window.location.href = "/oauth/youtube/start";
+          return;
+        }
         const result = form.querySelector(".result");
         result.textContent = "Saving, then opening sign-in…";
         result.className = "result";
@@ -447,7 +451,9 @@ export function renderSettingsPage(args: {
 function clerkScript(publishableKey: string | null): string {
   if (!publishableKey) return "";
   const encoded = publishableKey.replace(/^pk_(test|live)_/, "");
-  const frontendApi = Buffer.from(encoded, "base64").toString("utf8").replace(/\$$/, "");
+  const frontendApi = Buffer.from(encoded, "base64")
+    .toString("utf8")
+    .replace(/\$$/, "");
   const src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
   return `<script async crossorigin="anonymous" data-clerk-publishable-key="${escapeHtml(publishableKey)}" src="${escapeHtml(src)}"></script>`;
 }
@@ -528,9 +534,16 @@ function renderCard(connection: PublicConnection, origin: string): string {
       ? `<p class="docs">Redirect URI<br /><code>${escapeHtml(`${origin}/oauth/${platform}/callback`)}</code></p>`
       : "";
   const signIn =
-    platform === "tiktok" || platform === "youtube"
-      ? `<button class="text-button" type="button" data-action="signin">Sign in</button>`
-      : "";
+    platform === "youtube"
+      ? `<button class="primary" type="button" data-action="signin">Sign in</button>`
+      : platform === "tiktok"
+        ? `<button class="text-button" type="button" data-action="signin">Sign in</button>`
+        : "";
+  const save =
+    platform === "youtube"
+      ? ""
+      : `<button class="secondary" type="submit" data-action="save">Save</button>`;
+  const testClass = platform === "youtube" ? "secondary" : "primary";
   return `<form class="card" data-platform="${platform}">
     <div class="card-head">
       <h2>${platformLabel(platform)}</h2>
@@ -544,8 +557,8 @@ function renderCard(connection: PublicConnection, origin: string): string {
     </details>
     ${fields}
     <div class="actions">
-      <button class="secondary" type="submit" data-action="save">Save</button>
-      <button class="primary" type="submit" data-action="test">Test connection</button>
+      ${save}
+      <button class="${testClass}" type="submit" data-action="test">Test connection</button>
       ${signIn}
     </div>
     <p class="result" aria-live="polite"></p>

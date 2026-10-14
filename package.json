@@ -7,8 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "tsx src/http.ts",
-    "stdio": "tsx src/stdio.ts",
+    "start": "node --env-file-if-exists=.env.local --import tsx src/http.ts",
+    "stdio": "node --env-file-if-exists=.env.local --import tsx src/stdio.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

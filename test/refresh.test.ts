@@ -10,6 +10,8 @@ const directories: string[] = [];
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete process.env.YOUTUBE_CLIENT_ID;
+  delete process.env.YOUTUBE_CLIENT_SECRET;
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -50,19 +52,23 @@ describe("token refresh persistence", () => {
   });
 
   it("keeps the YouTube refresh token when Google only returns a new access token", async () => {
+    process.env.YOUTUBE_CLIENT_ID = "env-client";
+    process.env.YOUTUBE_CLIENT_SECRET = "env-secret";
     const store = tempStore();
     store.save(
       "youtube",
       {
-        clientId: "client",
-        clientSecret: "secret",
         refreshToken: "refresh-old",
         accessToken: "access-old",
       },
       { tokenExpiresAt: new Date(Date.now() - 60_000).toISOString() },
     );
-    const fetchMock = vi.fn(async (input: string | URL) => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       expect(String(input)).toBe("https://oauth2.googleapis.com/token");
+      const params = new URLSearchParams(String(init?.body ?? ""));
+      expect(params.get("client_id")).toBe("env-client");
+      expect(params.get("client_secret")).toBe("env-secret");
+      expect(params.get("refresh_token")).toBe("refresh-old");
       return jsonResponse({
         access_token: "access-new",
         expires_in: 3600,
@@ -75,6 +81,7 @@ describe("token refresh persistence", () => {
     expect(saved.credentials.accessToken).toBe("access-new");
     expect(saved.credentials.refreshToken).toBe("refresh-old");
     expect(store.get("youtube")?.credentials.accessToken).toBe("access-new");
+    expect(JSON.stringify(saved.credentials)).not.toContain("env-secret");
     store.close();
   });
 });

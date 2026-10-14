@@ -1,3 +1,4 @@
+import { userGrantReady } from "../credentials.js";
 import {
   emptyReport,
   failureReport,
@@ -80,7 +81,7 @@ export function describePlatforms(store: CredentialStore): PlatformStatus[] {
     const connection = store.get(entry.platform);
     return {
       platform: entry.platform,
-      connected: connection !== null,
+      connected: connection !== null && userGrantReady(connection),
       accountName: connection?.account?.name ?? null,
       accountHandle: connection?.account?.handle ?? null,
       tokenExpiresAt: connection?.tokenExpiresAt ?? null,
@@ -155,7 +156,8 @@ async function collectOne(
   mode: "analytics" | "content",
 ): Promise<PlatformReport> {
   try {
-    if (!store.get(platform))
+    const connection = store.get(platform);
+    if (!connection || !userGrantReady(connection))
       return notConfiguredReport(platform, query.period);
     const client = clients[platform];
     return mode === "analytics"

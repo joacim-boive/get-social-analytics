@@ -1,3 +1,4 @@
+import { userGrantReady } from "../credentials.js";
 import type { CredentialStore } from "../store.js";
 import type { AccountProfile, PlatformId } from "../report/types.js";
 import { platformLabel } from "../report/types.js";
@@ -20,11 +21,13 @@ export function rememberAccount<K extends PlatformId>(
 
 export function requireConnection<K extends PlatformId>(store: CredentialStore, platform: K) {
   const connection = store.get(platform);
-  if (!connection) {
+  if (!connection || !userGrantReady(connection)) {
     throw new PlatformApiError(
       "not_configured",
       `${platformLabel(platform)} is not connected.`,
-      "Open the settings page and add credentials for this platform.",
+      platform === "youtube"
+        ? "Sign in with YouTube on the settings page."
+        : "Open the settings page and add credentials for this platform.",
     );
   }
   return connection;

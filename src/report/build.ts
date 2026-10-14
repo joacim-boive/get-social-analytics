@@ -16,7 +16,9 @@ export function metric(value: Metric): Metric {
   return value;
 }
 
-export function periodBlock(period: ResolvedPeriod): NonNullable<PlatformReport["period"]> {
+export function periodBlock(
+  period: ResolvedPeriod,
+): NonNullable<PlatformReport["period"]> {
   return {
     requested: period.requested,
     applied: { start: period.start, end: period.end },
@@ -46,7 +48,10 @@ export function okReport(args: {
   return report;
 }
 
-export function notConfiguredReport(platform: PlatformId, period: ResolvedPeriod): PlatformReport {
+export function notConfiguredReport(
+  platform: PlatformId,
+  period: ResolvedPeriod,
+): PlatformReport {
   return {
     platform,
     status: "not_configured",
@@ -54,12 +59,19 @@ export function notConfiguredReport(platform: PlatformId, period: ResolvedPeriod
     error: {
       code: "not_configured",
       message: `${platformLabel(platform)} is not connected.`,
-      action: "Open the settings page and add credentials for this platform.",
+      action:
+        platform === "youtube"
+          ? "Sign in with YouTube on the settings page."
+          : "Open the settings page and add credentials for this platform.",
     },
   };
 }
 
-export function failureReport(platform: PlatformId, period: ResolvedPeriod, error: unknown): PlatformReport {
+export function failureReport(
+  platform: PlatformId,
+  period: ResolvedPeriod,
+  error: unknown,
+): PlatformReport {
   const mapped =
     error instanceof PlatformApiError
       ? error
@@ -72,7 +84,11 @@ export function failureReport(platform: PlatformId, period: ResolvedPeriod, erro
     platform,
     status: mapped.code === "not_configured" ? "not_configured" : "error",
     period: periodBlock(period),
-    error: { code: mapped.code, message: mapped.message, action: mapped.action },
+    error: {
+      code: mapped.code,
+      message: mapped.message,
+      action: mapped.action,
+    },
   };
 }
 
@@ -94,13 +110,19 @@ function metricRank(item: ContentItem, key: string): number {
 }
 
 export function sumMetric(metrics: ParsedNumber[]): number | null {
-  const present = metrics.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const present = metrics.filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value),
+  );
   if (present.length === 0) return null;
   return present.reduce((total, value) => total + value, 0);
 }
 
 type ParsedNumber = number | null | undefined;
 
-export function withNotes(period: ResolvedPeriod, notes: string[]): ResolvedPeriod {
+export function withNotes(
+  period: ResolvedPeriod,
+  notes: string[],
+): ResolvedPeriod {
   return { ...period, notes: [...period.notes, ...notes] };
 }

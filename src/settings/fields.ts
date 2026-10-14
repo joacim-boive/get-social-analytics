@@ -22,14 +22,5 @@ export const PLATFORM_FIELDS: Record<PlatformId, FieldSpec[]> = {
     { name: "accessToken", label: "Access token", secret: true },
     { name: "refreshToken", label: "Refresh token", secret: true },
   ],
-  youtube: [
-    { name: "clientId", label: "Client id", secret: false },
-    { name: "clientSecret", label: "Client secret", secret: true },
-    {
-      name: "refreshToken",
-      label: "Refresh token",
-      secret: true,
-      emptyHint: "Leave blank, then sign in",
-    },
-  ],
+  youtube: [],
 };

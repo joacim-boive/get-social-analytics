@@ -11,7 +11,7 @@ The site and the MCP endpoint run on Vercel. Platform tokens live in Turso. Only
   - Instagram professional account
   - Facebook Page you can analyze
   - TikTok account, plus a TikTok developer app
-  - YouTube channel, plus a Google Cloud OAuth client
+  - YouTube channel. The server's Google OAuth client is `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET`
 
 ## Run
 
@@ -129,15 +129,23 @@ Shared summary keys, filled only when the mapping is real:
 
 **YouTube.** Period views, watch time, likes, comments, shares, and subscriber gain and loss, plus the current subscriber count. Content is ranked by activity during the range, including older videos. Analytics often omits the most recent one or two days. An API key cannot supply these reports. Scopes: `youtube.readonly` and `yt-analytics.readonly`. Enable YouTube Data API v3 and YouTube Analytics API. [Reports.query](https://developers.google.com/youtube/analytics/reference/reports/query).
 
-## Connect TikTok and YouTube
+## Connect YouTube
 
-1. Create the developer app and add the redirect URI printed on the card. With the default port those are `http://127.0.0.1:8787/oauth/tiktok/callback` and `http://127.0.0.1:8787/oauth/youtube/callback`.
-2. Save the client key or client id, and the client secret. Leave YouTube's refresh token blank.
-3. Use **Sign in on this computer**. Sign-in stores the YouTube refresh token.
+Set `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` for the server's Google OAuth client. Enable YouTube Data API v3 and YouTube Analytics API on that project. Register the redirect URI printed on the YouTube card. With the default port that is `http://127.0.0.1:8787/oauth/youtube/callback`. On the hosted site it is `https://get-social-analytics.vercel.app/oauth/youtube/callback`.
 
-You can paste a YouTube refresh token instead of signing in. TikTok can be pasted the same way. Instagram and Facebook stay paste-only. A long-lived token from the [Graph API Explorer](https://developers.facebook.com/tools/explorer/) is the reliable personal setup for Meta.
+Open the settings page and use **Sign in**. That stores the channel's refresh token. Scopes: `youtube.readonly` and `yt-analytics.readonly`.
+
+Until Google verifies the OAuth client, only Google accounts listed as test users can connect.
 
 If Google does not return a refresh token, remove the app's access at [Google Account permissions](https://myaccount.google.com/permissions) and sign in again.
+
+## Connect TikTok
+
+1. Create the developer app and add the redirect URI printed on the card. With the default port that is `http://127.0.0.1:8787/oauth/tiktok/callback`.
+2. Save the client key and client secret.
+3. Use **Sign in**.
+
+TikTok can be pasted the same way. Instagram and Facebook stay paste-only. A long-lived token from the [Graph API Explorer](https://developers.facebook.com/tools/explorer/) is the reliable personal setup for Meta.
 
 ## Development
 

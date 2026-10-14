@@ -8,6 +8,7 @@ import { exchangeYouTubeCode } from "../platforms/youtube.js";
 import type { PlatformId } from "../report/types.js";
 import { isPlatformId } from "../report/types.js";
 import type { CredentialStore } from "../store.js";
+import { youtubeApp, youtubeAppMessage } from "../oauth-apps.js";
 import { assertAllowedOrigin, requestOrigin } from "./origin.js";
 import { renderSettingsPage, type PageNotice } from "./page.js";
 import { listPublic, toPublic } from "./public.js";
@@ -69,18 +70,20 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
     const platform = readPlatform(c.req.param("platform"));
     if (!platform)
       return c.json({ ok: false, message: "Unknown platform." }, 404);
-    try {
-      const body: unknown = await c.req.json();
-      saveConnection(store, platform, body);
-    } catch (error) {
-      return c.json(
-        {
-          ok: false,
-          message: errorMessage(error),
-          connection: toPublic(store, platform),
-        },
-        400,
-      );
+    if (platform !== "youtube") {
+      try {
+        const body: unknown = await c.req.json();
+        saveConnection(store, platform, body);
+      } catch (error) {
+        return c.json(
+          {
+            ok: false,
+            message: errorMessage(error),
+            connection: toPublic(store, platform),
+          },
+          400,
+        );
+      }
     }
     try {
       const account = await getClient(platform).test(store);
@@ -132,13 +135,10 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
         url.searchParams.set("code_challenge_method", "S256");
         return c.redirect(url.toString());
       }
-      const connection = store.get("youtube");
-      if (!connection)
-        return c.redirect(
-          errorRedirect(provider, "Save the client id and secret first."),
-        );
+      const app = youtubeApp();
+      if (!app) return c.redirect(errorRedirect(provider, youtubeAppMessage()));
       const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-      url.searchParams.set("client_id", connection.credentials.clientId);
+      url.searchParams.set("client_id", app.clientId);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("response_type", "code");
       url.searchParams.set(
@@ -201,20 +201,18 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
           { account: existing.account, tokenExpiresAt: exchanged.expiresAt },
         );
       } else {
+        const app = youtubeApp();
+        if (!app) return c.redirect(errorRedirect(provider, youtubeAppMessage()));
         const existing = store.get("youtube");
-        if (!existing)
-          return c.redirect(
-            errorRedirect(provider, "Save the client id and secret first."),
-          );
         const exchanged = await exchangeYouTubeCode({
-          clientId: existing.credentials.clientId,
-          clientSecret: existing.credentials.clientSecret,
+          clientId: app.clientId,
+          clientSecret: app.clientSecret,
           code,
           redirectUri: pending.redirectUri,
           codeVerifier: pending.verifier,
         });
         const refreshToken =
-          exchanged.refreshToken ?? existing.credentials.refreshToken;
+          exchanged.refreshToken ?? existing?.credentials.refreshToken ?? null;
         if (!refreshToken) {
           return c.redirect(
             errorRedirect(
@@ -226,12 +224,13 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
         store.save(
           "youtube",
           {
-            clientId: existing.credentials.clientId,
-            clientSecret: existing.credentials.clientSecret,
             refreshToken,
             accessToken: exchanged.accessToken,
           },
-          { account: existing.account, tokenExpiresAt: exchanged.expiresAt },
+          {
+            account: existing?.account ?? null,
+            tokenExpiresAt: exchanged.expiresAt,
+          },
         );
       }
       await getClient(provider).test(store);

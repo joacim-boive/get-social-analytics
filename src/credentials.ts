@@ -20,8 +20,6 @@ export type TikTokCredentials = {
 };
 
 export type YouTubeCredentials = {
-  clientId: string;
-  clientSecret: string;
   refreshToken: string | null;
   accessToken: string | null;
 };
@@ -77,15 +75,16 @@ function parseTikTok(value: unknown): TikTokCredentials {
 
 function parseYouTube(value: unknown): YouTubeCredentials {
   const record = expectRecord(value, "YouTube");
-  const clientId = readString(record, "clientId");
-  const clientSecret = readString(record, "clientSecret");
-  if (!clientId || !clientSecret) throw new Error("YouTube credentials are incomplete.");
   return {
-    clientId,
-    clientSecret,
     refreshToken: readString(record, "refreshToken"),
     accessToken: readString(record, "accessToken"),
   };
+}
+
+export function userGrantReady(connection: StoredConnection): boolean {
+  if (connection.platform !== "youtube") return true;
+  if (!("refreshToken" in connection.credentials)) return false;
+  return connection.credentials.refreshToken !== null;
 }
 
 function expectRecord(value: unknown, label: string): Record<string, unknown> {
