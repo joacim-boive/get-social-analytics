@@ -4,6 +4,22 @@ import { escapeHtml } from "../util.js";
 import { PLATFORM_FIELDS } from "./fields.js";
 import type { PublicConnection } from "./public.js";
 
+export type PageChoice = {
+  state: string;
+  pages: Array<{ id: string; name: string }>;
+};
+
+const LOGIN_HELP: Record<PlatformId, string> = {
+  instagram:
+    "Sign in with the Instagram professional account. That grant is stored for this account and is what the server uses to query Instagram analytics. Scopes: instagram_business_basic and instagram_business_manage_insights.",
+  facebook:
+    "Sign in with Facebook. That grant is stored for this account and is what the server uses to query Page analytics. If you manage more than one Page, choose the one to analyze.",
+  tiktok:
+    "Sign in with TikTok. That grant is stored for this account and is what the server uses to query TikTok. Scopes: user.info.basic, user.info.stats, video.list. The access token expires in 24 hours; the server refreshes it.",
+  youtube:
+    "Sign in with YouTube. That grant is stored for this account and is what the server uses to query YouTube Analytics. Scopes: youtube.readonly and yt-analytics.readonly.",
+};
+
 export type PageNotice = {
   tone: "ok" | "error";
   text: string;
@@ -38,10 +54,14 @@ export function renderSettingsPage(args: {
   notice: PageNotice | null;
   viewer?: string | null;
   publishableKey?: string | null;
+  login?: Partial<Record<PlatformId, boolean>>;
+  pageChoice?: PageChoice | null;
 }): string {
+  const login = args.login ?? {};
   const cards = args.connections
-    .map((connection) => renderCard(connection, args.origin))
+    .map((connection) => renderCard(connection, args.origin, login[connection.platform] === true))
     .join("");
+  const chooser = args.pageChoice ? renderPageChoice(args.pageChoice) : "";
   const notice = args.notice
     ? `<p class="notice ${args.notice.tone}" role="status">${escapeHtml(args.notice.text)}</p>`
     : "";
@@ -172,9 +192,10 @@ export function renderSettingsPage(args: {
       cursor: pointer;
       text-decoration: none;
     }
-    button.primary { background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
+    button.primary, a.primary { background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
+    a.primary { display: inline-block; }
     button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
-    button.text-button { background: transparent; border: 0; color: var(--stamp); padding-left: 4px; }
+    button.text-button, a.text-button { background: transparent; border: 0; color: var(--stamp); padding-left: 4px; }
     .result { min-height: 1.2em; margin: 12px 0 0; font-size: 14px; }
     .result.error { color: var(--stamp); }
     .result.ok { color: var(--ok); }
@@ -249,6 +270,7 @@ export function renderSettingsPage(args: {
       </div>
       <div id="panel-connections" role="tabpanel" aria-labelledby="tab-connections">
         ${notice}
+        ${chooser}
         <div class="cards">${cards}</div>
       </div>
       <div id="panel-report" role="tabpanel" aria-labelledby="tab-report" hidden>
@@ -485,9 +507,26 @@ function renderReportPanel(connections: PublicConnection[]): string {
   </form>`;
 }
 
-function renderCard(connection: PublicConnection, origin: string): string {
+function renderPageChoice(choice: PageChoice): string {
+  const options = choice.pages
+    .map((page, index) => {
+      const checked = index === 0 ? " checked" : "";
+      return `<label class="choice"><input type="radio" name="pageId" value="${escapeHtml(page.id)}"${checked} />${escapeHtml(page.name)}</label>`;
+    })
+    .join("");
+  return `<form class="card" method="post" action="/oauth/facebook/choose">
+    <div class="card-head"><h2>Choose a Page</h2></div>
+    <p class="docs">Facebook returned more than one Page. Sign-in continues with the Page you analyze.</p>
+    <input type="hidden" name="state" value="${escapeHtml(choice.state)}" />
+    <div class="choice-row">${options}</div>
+    <div class="actions"><button class="primary" type="submit">Use this Page</button></div>
+  </form>`;
+}
+
+function renderCard(connection: PublicConnection, origin: string, login: boolean): string {
   const platform = connection.platform;
   const help = HELP[platform];
+  const summary = login ? LOGIN_HELP[platform] : help.summary;
   const status = connection.account
     ? "Connected"
     : connection.configured
@@ -503,7 +542,9 @@ function renderCard(connection: PublicConnection, origin: string): string {
   const accountLine = connection.account
     ? `${connection.account.name}${handle}${expiry}`
     : expiry;
-  const fields = PLATFORM_FIELDS[platform]
+  const fields = login
+    ? ""
+    : PLATFORM_FIELDS[platform]
     .map((field) => {
       const state = connection.fields[field.name];
       const placeholder = field.secret
@@ -523,14 +564,20 @@ function renderCard(connection: PublicConnection, origin: string): string {
         <input id="${platform}-${field.name}" name="${field.name}" type="${type}" autocomplete="off" spellcheck="false" placeholder="${escapeHtml(placeholder)}"${value}${emptyHint} />`;
     })
     .join("");
-  const redirect =
-    platform === "tiktok" || platform === "youtube"
-      ? `<p class="docs">Redirect URI<br /><code>${escapeHtml(`${origin}/oauth/${platform}/callback`)}</code></p>`
-      : "";
-  const signIn =
-    platform === "tiktok" || platform === "youtube"
+  const redirect = login || platform === "tiktok" || platform === "youtube"
+    ? `<p class="docs">Redirect URI<br /><code>${escapeHtml(`${origin}/oauth/${platform}/callback`)}</code></p>`
+    : "";
+  const signIn = login
+    ? `<a class="${connection.configured ? "text-button" : "primary"}" href="/oauth/${platform}/start">Sign in</a>`
+    : platform === "tiktok" || platform === "youtube"
       ? `<button class="text-button" type="button" data-action="signin">Sign in</button>`
       : "";
+  const save = login
+    ? ""
+    : `<button class="secondary" type="submit" data-action="save">Save</button>`;
+  const test = !login || connection.configured
+    ? `<button class="${login && !connection.configured ? "primary" : login ? "secondary" : "primary"}" type="submit" data-action="test">Test connection</button>`
+    : "";
   return `<form class="card" data-platform="${platform}">
     <div class="card-head">
       <h2>${platformLabel(platform)}</h2>
@@ -539,14 +586,12 @@ function renderCard(connection: PublicConnection, origin: string): string {
     <p class="account">${escapeHtml(accountLine)}</p>
     <details>
       <summary>Where this comes from</summary>
-      <p class="docs">${escapeHtml(help.summary)} <a href="${help.docs}">Official docs</a></p>
+      <p class="docs">${escapeHtml(summary)} <a href="${help.docs}">Official docs</a></p>
       ${redirect}
     </details>
     ${fields}
     <div class="actions">
-      <button class="secondary" type="submit" data-action="save">Save</button>
-      <button class="primary" type="submit" data-action="test">Test connection</button>
-      ${signIn}
+      ${login && !connection.configured ? signIn : `${save}${test}${signIn}`}
     </div>
     <p class="result" aria-live="polite"></p>
   </form>`;

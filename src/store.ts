@@ -17,12 +17,20 @@ type ConnectionRow = {
   updated_at: string;
 };
 
+export const OAUTH_PROVIDERS = ["instagram", "facebook", "tiktok", "youtube"] as const;
+
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+
 export type StoredOAuth = {
-  provider: "tiktok" | "youtube";
+  provider: OAuthProvider;
   verifier: string;
   redirectUri: string;
   createdAt: number;
 };
+
+export function isOAuthProvider(value: string): value is OAuthProvider {
+  return (OAUTH_PROVIDERS as readonly string[]).includes(value);
+}
 
 export type PersistedConnection = {
   platform: PlatformId;
@@ -43,6 +51,7 @@ export type CredentialStore = {
   ): StoredConnection<K>;
   withLock<T>(name: string, fn: () => Promise<T>): Promise<T>;
   saveOAuth(state: string, pending: StoredOAuth): Promise<void>;
+  peekOAuth(state: string): Promise<StoredOAuth | null>;
   takeOAuth(state: string): Promise<StoredOAuth | null>;
   drain(): Promise<void>;
   close(): void;
@@ -155,19 +164,15 @@ export function openStore(dbPath = DEFAULT_PATH): SqliteStore {
         created_at: pending.createdAt,
       });
     },
+    async peekOAuth(state) {
+      deleteOAuth.run(Date.now() - 10 * 60 * 1000);
+      return readOAuth(selectOAuth.get(state));
+    },
     async takeOAuth(state) {
       deleteOAuth.run(Date.now() - 10 * 60 * 1000);
-      const row = selectOAuth.get(state);
+      const pending = readOAuth(selectOAuth.get(state));
       removeOAuth.run(state);
-      if (!isOAuthRow(row)) return null;
-      if (Date.now() - row.created_at > 10 * 60 * 1000) return null;
-      if (row.provider !== "tiktok" && row.provider !== "youtube") return null;
-      return {
-        provider: row.provider,
-        verifier: row.verifier,
-        redirectUri: row.redirect_uri,
-        createdAt: row.created_at,
-      };
+      return pending;
     },
     async drain() {},
     exportRows() {
@@ -226,6 +231,18 @@ type OAuthRow = {
   redirect_uri: string;
   created_at: number;
 };
+
+function readOAuth(value: unknown): StoredOAuth | null {
+  if (!isOAuthRow(value)) return null;
+  if (Date.now() - value.created_at > 10 * 60 * 1000) return null;
+  if (!isOAuthProvider(value.provider)) return null;
+  return {
+    provider: value.provider,
+    verifier: value.verifier,
+    redirectUri: value.redirect_uri,
+    createdAt: value.created_at,
+  };
+}
 
 function isOAuthRow(value: unknown): value is OAuthRow {
   if (!isRecord(value)) return false;
