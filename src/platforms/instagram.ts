@@ -32,6 +32,53 @@ import {
 } from "./insights.js";
 import { rememberAccount, requireConnection } from "./remember.js";
 
+export function instagramAuthorizeUrl(args: {
+  appId: string;
+  redirectUri: string;
+  state: string;
+}): string {
+  const url = new URL("https://www.instagram.com/oauth/authorize");
+  url.searchParams.set("client_id", args.appId);
+  url.searchParams.set("redirect_uri", args.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "instagram_business_basic,instagram_business_manage_insights");
+  url.searchParams.set("state", args.state);
+  url.searchParams.set("enable_fb_login", "0");
+  return url.toString();
+}
+
+export async function exchangeInstagramCode(args: {
+  appId: string;
+  appSecret: string;
+  code: string;
+  redirectUri: string;
+}): Promise<{ accessToken: string; expiresAt: string }> {
+  const { status, body } = await requestJson("https://api.instagram.com/oauth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: args.appId,
+      client_secret: args.appSecret,
+      grant_type: "authorization_code",
+      redirect_uri: args.redirectUri,
+      code: args.code.replace(/#_$/, ""),
+    }),
+  });
+  const shortLived = readInstagramOauthToken(body, status);
+  return postInstagramToken("https://graph.instagram.com/access_token", {
+    grant_type: "ig_exchange_token",
+    client_secret: args.appSecret,
+    access_token: shortLived,
+  });
+}
+
+function readInstagramOauthToken(body: unknown, status: number): string {
+  const record = isRecord(body) ? body : null;
+  const wrapped = record && Array.isArray(record.data) ? record.data[0] : record;
+  if (isRecord(wrapped) && typeof wrapped.access_token === "string") return wrapped.access_token;
+  throw mapTokenError(body, status);
+}
+
 const ACCOUNT_METRICS = [
   "reach",
   "views",
@@ -550,16 +597,29 @@ async function withInstagramToken<T>(
 ): Promise<T> {
   const current = requireConnection(store, "instagram");
   const initial = await maybeRefreshInstagram(store, current);
+  const token = initial.credentials.accessToken;
+  if (!token) {
+    throw new PlatformApiError(
+      "not_configured",
+      "Instagram is not signed in yet.",
+      "Save the app id and secret, then use Sign in on the settings page.",
+    );
+  }
   try {
-    return await fn(initial.credentials.accessToken);
+    return await fn(token);
   } catch (error) {
     if (!(error instanceof PlatformApiError) || error.code !== "token_invalid")
       throw error;
-    const refreshed = await refreshInstagramCredentials(
-      store,
-      initial.credentials.accessToken,
-    );
-    return fn(refreshed.credentials.accessToken);
+    const refreshed = await refreshInstagramCredentials(store, token);
+    const next = refreshed.credentials.accessToken;
+    if (!next) {
+      throw new PlatformApiError(
+        "not_configured",
+        "Instagram is not signed in yet.",
+        "Save the app id and secret, then use Sign in on the settings page.",
+      );
+    }
+    return fn(next);
   }
 }
 
@@ -584,12 +644,20 @@ export async function refreshInstagramCredentials(
     ) {
       return current;
     }
+    const currentToken = current.credentials.accessToken;
+    if (!currentToken) {
+      throw new PlatformApiError(
+        "not_configured",
+        "Instagram is not signed in yet.",
+        "Save the app id and secret, then use Sign in on the settings page.",
+      );
+    }
     try {
       const refreshed = await postInstagramToken(
         "https://graph.instagram.com/refresh_access_token",
         {
           grant_type: "ig_refresh_token",
-          access_token: current.credentials.accessToken,
+          access_token: currentToken,
         },
       );
       return store.save(
@@ -604,7 +672,7 @@ export async function refreshInstagramCredentials(
           {
             grant_type: "ig_exchange_token",
             client_secret: current.credentials.appSecret,
-            access_token: current.credentials.accessToken,
+            access_token: currentToken,
           },
         );
         return store.save(
@@ -644,7 +712,7 @@ function mapTokenError(body: unknown, status: number): PlatformApiError {
   return new PlatformApiError(
     "token_invalid",
     "Instagram did not refresh the token.",
-    "Paste a new long-lived token on the settings page.",
+    "Open the settings page and sign in again.",
     status,
   );
 }

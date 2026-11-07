@@ -12,12 +12,12 @@ export type PageNotice = {
 const HELP: Record<PlatformId, { summary: string; docs: string }> = {
   instagram: {
     summary:
-      "Paste a long-lived token for your professional Instagram account, plus the app secret from the same Meta app. The secret is used to exchange a short-lived token and to refresh the long-lived one before the 60-day expiry. Host: graph.instagram.com.",
-    docs: "https://developers.facebook.com/docs/instagram-platform/reference/access_token/",
+      "Create an Instagram app, register the redirect below, then save the app id and secret and use Sign in. The login needs instagram_business_basic and instagram_business_manage_insights. A pasted long-lived token still works. Host: graph.instagram.com.",
+    docs: "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login",
   },
   facebook: {
     summary:
-      "Paste a Page access token for a Page you can ANALYZE. Mint it from a long-lived user token so it does not expire in an hour. The token needs read_insights and pages_read_engagement. Leave Page id blank if the token is already a Page token.",
+      "Create a Meta app, register the redirect below, then save the app id and secret and use Sign in. The login needs pages_show_list, pages_read_engagement, and read_insights. Enter a Page id when the account manages more than one Page. A pasted Page token still works.",
     docs: "https://developers.facebook.com/docs/pages-api/getting-started",
   },
   tiktok: {
@@ -267,6 +267,43 @@ export function renderSettingsPage(args: {
       });
     }
     const initial = ${boot};
+    async function clerkBearer() {
+      const script = document.querySelector("script[data-clerk-publishable-key]");
+      if (!script && !window.Clerk) return {};
+      const started = Date.now();
+      while (!window.Clerk && Date.now() - started < 5000) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      if (!window.Clerk) return {};
+      try {
+        await window.Clerk.load();
+        const token = window.Clerk.session ? await window.Clerk.session.getToken() : null;
+        return token ? { Authorization: "Bearer " + token } : {};
+      } catch (error) {
+        return {};
+      }
+    }
+
+    async function postJson(url, payload) {
+      const auth = await clerkBearer();
+      const response = await fetch(url, {
+        method: "POST",
+        redirect: "manual",
+        headers: Object.assign({ "Content-Type": "application/json", Accept: "application/json" }, auth),
+        body: JSON.stringify(payload),
+      });
+      if (response.type === "opaqueredirect") {
+        window.location.reload();
+        return null;
+      }
+      const text = await response.text();
+      try {
+        return { response, data: JSON.parse(text) };
+      } catch (error) {
+        throw new Error("The settings server did not respond.");
+      }
+    }
+
     const forms = document.querySelectorAll("form[data-platform]");
     for (const form of forms) {
       form.addEventListener("submit", async (event) => {
@@ -278,15 +315,11 @@ export function renderSettingsPage(args: {
         result.textContent = action === "test" ? "Saving and testing…" : "Saving…";
         result.className = "result";
         try {
-          const response = await fetch(action === "test" ? "/api/connections/" + platform + "/test" : "/api/connections/" + platform, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(formPayload(form)),
-          });
-          const data = await response.json();
-          if (data.connection) applyConnection(form, data.connection);
-          result.textContent = data.message || (data.ok === false ? "Something went wrong." : "Saved.");
-          result.className = "result " + (data.ok === false || !response.ok ? "error" : "ok");
+          const posted = await postJson(action === "test" ? "/api/connections/" + platform + "/test" : "/api/connections/" + platform, formPayload(form));
+          if (!posted) return;
+          if (posted.data.connection) applyConnection(form, posted.data.connection);
+          result.textContent = posted.data.message || (posted.data.ok === false ? "Something went wrong." : "Saved.");
+          result.className = "result " + (posted.data.ok === false || !posted.response.ok ? "error" : "ok");
         } catch (error) {
           result.textContent = "The settings server did not respond.";
           result.className = "result error";
@@ -299,15 +332,11 @@ export function renderSettingsPage(args: {
         result.textContent = "Saving, then opening sign-in…";
         result.className = "result";
         try {
-          const response = await fetch("/api/connections/" + form.dataset.platform, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(formPayload(form)),
-          });
-          const data = await response.json();
-          if (data.connection) applyConnection(form, data.connection);
-          if (!response.ok || data.ok === false) {
-            result.textContent = data.message || "Save the client id and secret before signing in.";
+          const posted = await postJson("/api/connections/" + form.dataset.platform, formPayload(form));
+          if (!posted) return;
+          if (posted.data.connection) applyConnection(form, posted.data.connection);
+          if (!posted.response.ok || posted.data.ok === false) {
+            result.textContent = posted.data.message || "Save the app credentials before signing in.";
             result.className = "result error";
             return;
           }
@@ -384,10 +413,18 @@ export function renderSettingsPage(args: {
           include: "both",
           contentLimit: "30",
         });
-        const response = await fetch("/api/analytics?" + params.toString());
+        const auth = await clerkBearer();
+        const response = await fetch("/api/analytics?" + params.toString(), {
+          headers: Object.assign({ Accept: "application/json" }, auth),
+          redirect: "manual",
+        });
+        if (response.type === "opaqueredirect") {
+          window.location.reload();
+          return;
+        }
         const data = await response.json();
         if (!response.ok) {
-          reportStatus.textContent = data.error || "The report could not be built.";
+          reportStatus.textContent = data.message || data.error || "The report could not be built.";
           reportStatus.className = "result error";
           return;
         }
@@ -525,14 +562,8 @@ function renderCard(connection: PublicConnection, origin: string): string {
         <input id="${platform}-${field.name}" name="${field.name}" type="${type}" autocomplete="off" spellcheck="false" placeholder="${escapeHtml(placeholder)}"${value}${emptyHint} />`;
     })
     .join("");
-  const redirect =
-    platform === "tiktok" || platform === "youtube"
-      ? `<p class="docs">Redirect URI<br /><code>${escapeHtml(`${origin}/oauth/${platform}/callback`)}</code></p>`
-      : "";
-  const signIn =
-    platform === "tiktok" || platform === "youtube"
-      ? `<button class="text-button" type="button" data-action="signin">Sign in</button>`
-      : "";
+  const redirect = `<p class="docs">Redirect URI<br /><code>${escapeHtml(`${origin}/oauth/${platform}/callback`)}</code></p>`;
+  const signIn = `<button class="text-button" type="button" data-action="signin">Sign in</button>`;
   return `<form class="card" data-platform="${platform}">
     <div class="card-head">
       <h2>${platformLabel(platform)}</h2>

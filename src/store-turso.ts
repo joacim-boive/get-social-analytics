@@ -213,7 +213,7 @@ function readOAuth(row: unknown): StoredOAuth | null {
   const verifier = text(record, "verifier");
   const redirectUri = text(record, "redirect_uri");
   const createdAt = numberValue(record.created_at);
-  if ((provider !== "tiktok" && provider !== "youtube") || !verifier || !redirectUri || createdAt === null) {
+  if (!provider || !isPlatformId(provider) || !verifier || !redirectUri || createdAt === null) {
     return null;
   }
   if (Date.now() - createdAt > oauthTtlMs) return null;

@@ -30,7 +30,7 @@ export function mapMetaError(body: unknown, status: number): PlatformApiError {
     return new PlatformApiError(
       "token_invalid",
       message,
-      "Open the settings page and paste a new access token.",
+      "Open the settings page and sign in again.",
       status,
     );
   }
@@ -38,7 +38,7 @@ export function mapMetaError(body: unknown, status: number): PlatformApiError {
     return new PlatformApiError(
       "permission_denied",
       message,
-      "Regenerate the token with the permissions listed on the settings page.",
+      "Sign in again with the permissions listed on the settings page.",
       status,
     );
   }

@@ -41,15 +41,21 @@ export async function requireBrowserUser(request: Request): Promise<SignedInUser
   });
   const redirect = redirectFromClerkHeaders(state.headers, request, origin, keys.publishableKey);
   if (state.status === "handshake") {
-    return redirect ?? clerkRedirect(state.headers);
+    return settleBrowserAuth(request, redirect ?? clerkRedirect(state.headers));
   }
-  if (redirect) return redirect;
+  if (redirect) return settleBrowserAuth(request, redirect);
   if (!state.isAuthenticated) {
-    return signInRedirectResponse(request, origin, state.signInUrl, keys.publishableKey);
+    return settleBrowserAuth(
+      request,
+      signInRedirectResponse(request, origin, state.signInUrl, keys.publishableKey),
+    );
   }
   const userId = state.toAuth().userId;
   if (!userId) {
-    return signInRedirectResponse(request, origin, state.signInUrl, keys.publishableKey);
+    return settleBrowserAuth(
+      request,
+      signInRedirectResponse(request, origin, state.signInUrl, keys.publishableKey),
+    );
   }
   const email = await allowedEmail(userId);
   if (email === false) {
@@ -197,6 +203,23 @@ export function unauthenticatedResponse(args: {
   const redirect = redirectFromClerkHeaders(args.headers, args.request, args.origin, args.publishableKey);
   if (redirect) return redirect;
   return signInRedirectResponse(args.request, args.origin, args.signInUrl, args.publishableKey);
+}
+
+export function settleBrowserAuth(request: Request, result: Response): Response {
+  if (!isApiRequest(request)) return result;
+  if (result.status !== 302 && result.status !== 307) return result;
+  return Response.json(
+    { ok: false, message: "Sign in again, then retry." },
+    { status: 401, headers: { "cache-control": "no-store" } },
+  );
+}
+
+function isApiRequest(request: Request): boolean {
+  try {
+    return new URL(request.url).pathname.startsWith("/api/");
+  } catch {
+    return request.url.split("?")[0]?.startsWith("/api/") ?? false;
+  }
 }
 
 export function withSessionCookies(response: Response, headers: Headers): Response {

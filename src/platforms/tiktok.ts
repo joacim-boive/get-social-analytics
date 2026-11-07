@@ -1,13 +1,19 @@
-import type { CredentialStore } from "../store.js";
-import type { TikTokCredentials, StoredConnection } from "../credentials.js";
+import type { StoredConnection, TikTokCredentials } from "../credentials.js";
 import { metric, okReport, rankContent, withNotes } from "../report/build.js";
 import { formatIsoDate, isWithinPeriod } from "../report/period.js";
-import type { AccountProfile, ContentItem, Metric, PlatformReport, UnavailableMetric } from "../report/types.js";
+import type {
+  AccountProfile,
+  ContentItem,
+  Metric,
+  PlatformReport,
+  UnavailableMetric,
+} from "../report/types.js";
+import type { CredentialStore } from "../store.js";
 import { asNumber, clipText, isRecord, readString } from "../util.js";
+import type { AnalyticsQuery, PlatformClient } from "./client.js";
 import { mapTikTokError, PlatformApiError } from "./errors.js";
 import { requestJson } from "./http.js";
 import { rememberAccount, requireConnection } from "./remember.js";
-import type { AnalyticsQuery, PlatformClient } from "./client.js";
 
 const API = "https://open.tiktokapis.com";
 const TIKTOK_NOTE =
@@ -35,7 +41,12 @@ export async function exchangeTikTokCode(args: {
   code: string;
   redirectUri: string;
   codeVerifier: string;
-}): Promise<{ accessToken: string; refreshToken: string; openId: string | null; expiresAt: string }> {
+}): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  openId: string | null;
+  expiresAt: string;
+}> {
   const { status, body } = await requestJson(`${API}/v2/oauth/token/`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -59,7 +70,8 @@ export async function refreshTikTokCredentials(
   return store.withLock("tiktok-refresh", async () => {
     const current = requireConnection(store, "tiktok");
     if (!force && !tiktokNeedsRefresh(current)) return current;
-    if (force && failedToken && current.credentials.accessToken !== failedToken) return current;
+    if (force && failedToken && current.credentials.accessToken !== failedToken)
+      return current;
     const refreshed = await requestRefresh(current.credentials);
     return store.save(
       "tiktok",
@@ -76,7 +88,9 @@ export async function refreshTikTokCredentials(
 
 async function testTikTok(store: CredentialStore): Promise<AccountProfile> {
   return withTikTok(store, async (connection) => {
-    const profile = await fetchUser(connection.credentials.accessToken);
+    const profile = await fetchUser(
+      requireTikTokToken(connection.credentials.accessToken),
+    );
     rememberAccount(store, "tiktok", profile.account);
     return profile.account;
   });
@@ -88,26 +102,48 @@ async function loadTikTok(
   mode: "analytics" | "content",
 ): Promise<PlatformReport> {
   return withTikTok(store, async (connection) => {
-    const token = connection.credentials.accessToken;
+    const token = requireTikTokToken(connection.credentials.accessToken);
     const profile = await fetchUser(token);
     rememberAccount(store, "tiktok", profile.account);
     const wantSummary = mode === "analytics" && query.include !== "content";
     const wantContent = mode === "content" || query.include !== "summary";
     const unavailable: UnavailableMetric[] = [
       { key: "reach", reason: "TikTok Display API does not provide reach." },
-      { key: "watch_time_minutes", reason: "TikTok Display API does not provide watch time." },
-      { key: "followers_gained", reason: "TikTok only returns the current follower count, not follows during a range." },
-      { key: "followers_lost", reason: "TikTok only returns the current follower count, not unfollows during a range." },
+      {
+        key: "watch_time_minutes",
+        reason: "TikTok Display API does not provide watch time.",
+      },
+      {
+        key: "followers_gained",
+        reason:
+          "TikTok only returns the current follower count, not follows during a range.",
+      },
+      {
+        key: "followers_lost",
+        reason:
+          "TikTok only returns the current follower count, not unfollows during a range.",
+      },
     ];
-    const videos = wantSummary || wantContent ? await listVideos(token, query.period) : { items: [], truncated: false };
+    const videos =
+      wantSummary || wantContent
+        ? await listVideos(token, query.period)
+        : { items: [], truncated: false };
     if (videos.truncated) {
       unavailable.push({
         key: "content",
-        reason: "TikTok listing stopped after 200 recent videos. Older posts in this range may be missing.",
+        reason:
+          "TikTok listing stopped after 200 recent videos. Older posts in this range may be missing.",
       });
     }
-    const summary = wantSummary ? buildSummary(profile, videos.items) : undefined;
-    const content = wantContent ? rankContent(videos.items.map(toContentItem)).slice(0, query.contentLimit) : undefined;
+    const summary = wantSummary
+      ? buildSummary(profile, videos.items)
+      : undefined;
+    const content = wantContent
+      ? rankContent(videos.items.map(toContentItem)).slice(
+          0,
+          query.contentLimit,
+        )
+      : undefined;
     return okReport({
       platform: "tiktok",
       account: profile.account,
@@ -120,7 +156,12 @@ async function loadTikTok(
 }
 
 function buildSummary(
-  profile: { account: AccountProfile; followers: number | null; likes: number | null; videos: number | null },
+  profile: {
+    account: AccountProfile;
+    followers: number | null;
+    likes: number | null;
+    videos: number | null;
+  },
   items: TikTokVideo[],
 ): Metric[] {
   const summary: Metric[] = [];
@@ -136,9 +177,16 @@ function buildSummary(
       }),
     );
   }
-  const views = sumPresent(items.map((item) => item.viewCount), items.length === 0);
+  const views = sumPresent(
+    items.map((item) => item.viewCount),
+    items.length === 0,
+  );
   const engagements = sumPresent(
-    items.flatMap((item) => [item.likeCount, item.commentCount, item.shareCount]),
+    items.flatMap((item) => [
+      item.likeCount,
+      item.commentCount,
+      item.shareCount,
+    ]),
     items.length === 0,
   );
   if (views !== null) {
@@ -168,22 +216,34 @@ function buildSummary(
   return summary;
 }
 
-function sumPresent(values: Array<number | null>, emptyIsZero: boolean): number | null {
+function sumPresent(
+  values: Array<number | null>,
+  emptyIsZero: boolean,
+): number | null {
   const present = values.filter((value): value is number => value !== null);
   if (present.length === 0) return emptyIsZero ? 0 : null;
   return present.reduce((total, value) => total + value, 0);
 }
 
-async function listVideos(token: string, period: AnalyticsQuery["period"]): Promise<{ items: TikTokVideo[]; truncated: boolean }> {
+async function listVideos(
+  token: string,
+  period: AnalyticsQuery["period"],
+): Promise<{ items: TikTokVideo[]; truncated: boolean }> {
   const items: TikTokVideo[] = [];
   let cursor: number | null = null;
   let truncated = false;
   for (let page = 0; page < 10; page += 1) {
     const payload: { max_count: number; cursor?: number } = { max_count: 20 };
     if (cursor !== null) payload.cursor = cursor;
-    const body = await tiktokPost("/v2/video/list/", token, "id,title,video_description,create_time,share_url,like_count,comment_count,share_count,view_count", payload);
+    const body = await tiktokPost(
+      "/v2/video/list/",
+      token,
+      "id,title,video_description,create_time,share_url,like_count,comment_count,share_count,view_count",
+      payload,
+    );
     const data = isRecord(body) && isRecord(body.data) ? body.data : null;
-    const videos = data && Array.isArray(data.videos) ? data.videos.filter(isRecord) : [];
+    const videos =
+      data && Array.isArray(data.videos) ? data.videos.filter(isRecord) : [];
     let reachedOlder = false;
     for (const video of videos) {
       const created = asNumber(video.create_time);
@@ -193,7 +253,8 @@ async function listVideos(token: string, period: AnalyticsQuery["period"]): Prom
         reachedOlder = true;
         break;
       }
-      if (isWithinPeriod(published, period)) items.push(toVideo(video, published));
+      if (isWithinPeriod(published, period))
+        items.push(toVideo(video, published));
     }
     if (reachedOlder) break;
     const hasMore = data?.has_more === true;
@@ -205,10 +266,14 @@ async function listVideos(token: string, period: AnalyticsQuery["period"]): Prom
   return { items, truncated };
 }
 
-function toVideo(record: Record<string, unknown>, publishedAt: string): TikTokVideo {
+function toVideo(
+  record: Record<string, unknown>,
+  publishedAt: string,
+): TikTokVideo {
   return {
     id: readString(record, "id") ?? "unknown",
-    title: readString(record, "title") ?? readString(record, "video_description"),
+    title:
+      readString(record, "title") ?? readString(record, "video_description"),
     url: readString(record, "share_url"),
     publishedAt,
     viewCount: asNumber(record.view_count),
@@ -222,9 +287,25 @@ function toContentItem(video: TikTokVideo): ContentItem {
   const metrics: Metric[] = [];
   pushCount(metrics, "views", "Views", video.viewCount, "views", "view_count");
   pushCount(metrics, "likes", "Likes", video.likeCount, "count", "like_count");
-  pushCount(metrics, "comments", "Comments", video.commentCount, "count", "comment_count");
-  pushCount(metrics, "shares", "Shares", video.shareCount, "count", "share_count");
-  const parts = [video.likeCount, video.commentCount, video.shareCount].filter((value): value is number => value !== null);
+  pushCount(
+    metrics,
+    "comments",
+    "Comments",
+    video.commentCount,
+    "count",
+    "comment_count",
+  );
+  pushCount(
+    metrics,
+    "shares",
+    "Shares",
+    video.shareCount,
+    "count",
+    "share_count",
+  );
+  const parts = [video.likeCount, video.commentCount, video.shareCount].filter(
+    (value): value is number => value !== null,
+  );
   if (parts.length > 0) {
     metrics.push(
       metric({
@@ -248,14 +329,35 @@ function toContentItem(video: TikTokVideo): ContentItem {
   };
 }
 
-async function fetchUser(token: string): Promise<{ account: AccountProfile; followers: number | null; likes: number | null; videos: number | null }> {
-  let body = await tiktokGet("/v2/user/info/", token, "open_id,display_name,username,follower_count,following_count,likes_count,video_count");
+async function fetchUser(token: string): Promise<{
+  account: AccountProfile;
+  followers: number | null;
+  likes: number | null;
+  videos: number | null;
+}> {
+  let body = await tiktokGet(
+    "/v2/user/info/",
+    token,
+    "open_id,display_name,username,follower_count,following_count,likes_count,video_count",
+  );
   if (isScopeError(body)) {
-    body = await tiktokGet("/v2/user/info/", token, "open_id,display_name,follower_count,likes_count,video_count");
+    body = await tiktokGet(
+      "/v2/user/info/",
+      token,
+      "open_id,display_name,follower_count,likes_count,video_count",
+    );
   }
   assertTikTokOk(200, body);
-  const user = isRecord(body) && isRecord(body.data) && isRecord(body.data.user) ? body.data.user : null;
-  if (!user) throw new PlatformApiError("api_error", "TikTok returned an unreadable profile.", "Test the connection again.");
+  const user =
+    isRecord(body) && isRecord(body.data) && isRecord(body.data.user)
+      ? body.data.user
+      : null;
+  if (!user)
+    throw new PlatformApiError(
+      "api_error",
+      "TikTok returned an unreadable profile.",
+      "Test the connection again.",
+    );
   const id = readString(user, "open_id") ?? "tiktok-user";
   const username = readString(user, "username");
   const name = readString(user, "display_name") ?? username ?? id;
@@ -267,24 +369,57 @@ async function fetchUser(token: string): Promise<{ account: AccountProfile; foll
   };
 }
 
-async function withTikTok<T>(store: CredentialStore, fn: (connection: StoredConnection<"tiktok">) => Promise<T>): Promise<T> {
+async function withTikTok<T>(
+  store: CredentialStore,
+  fn: (connection: StoredConnection<"tiktok">) => Promise<T>,
+): Promise<T> {
   let current = await ensureTikTokAccess(store);
   try {
     return await fn(current);
   } catch (error) {
-    if (!(error instanceof PlatformApiError) || error.code !== "token_invalid") throw error;
-    current = await refreshTikTokCredentials(store, true, current.credentials.accessToken);
+    if (!(error instanceof PlatformApiError) || error.code !== "token_invalid")
+      throw error;
+    current = await refreshTikTokCredentials(
+      store,
+      true,
+      current.credentials.accessToken ?? undefined,
+    );
     return fn(current);
   }
 }
 
-async function ensureTikTokAccess(store: CredentialStore): Promise<StoredConnection<"tiktok">> {
+async function ensureTikTokAccess(
+  store: CredentialStore,
+): Promise<StoredConnection<"tiktok">> {
   const current = requireConnection(store, "tiktok");
   if (!tiktokNeedsRefresh(current)) return current;
   return refreshTikTokCredentials(store);
 }
 
-async function requestRefresh(credentials: TikTokCredentials): Promise<{ accessToken: string; refreshToken: string; openId: string | null; expiresAt: string }> {
+function requireTikTokToken(token: string | null): string {
+  if (!token) {
+    throw new PlatformApiError(
+      "not_configured",
+      "TikTok is not signed in yet.",
+      "Save the client key and secret, then use Sign in on the settings page.",
+    );
+  }
+  return token;
+}
+
+async function requestRefresh(credentials: TikTokCredentials): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  openId: string | null;
+  expiresAt: string;
+}> {
+  if (!credentials.refreshToken) {
+    throw new PlatformApiError(
+      "not_configured",
+      "TikTok is not signed in yet.",
+      "Save the client key and secret, then use Sign in on the settings page.",
+    );
+  }
   const { status, body } = await requestJson(`${API}/v2/oauth/token/`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -298,9 +433,26 @@ async function requestRefresh(credentials: TikTokCredentials): Promise<{ accessT
   return readTokenPayload(body, status);
 }
 
-function readTokenPayload(body: unknown, status: number): { accessToken: string; refreshToken: string; openId: string | null; expiresAt: string } {
-  const record = isRecord(body) && isRecord(body.data) && typeof body.data.access_token === "string" ? body.data : body;
-  if (!isRecord(record) || typeof record.access_token !== "string" || typeof record.refresh_token !== "string") {
+function readTokenPayload(
+  body: unknown,
+  status: number,
+): {
+  accessToken: string;
+  refreshToken: string;
+  openId: string | null;
+  expiresAt: string;
+} {
+  const record =
+    isRecord(body) &&
+    isRecord(body.data) &&
+    typeof body.data.access_token === "string"
+      ? body.data
+      : body;
+  if (
+    !isRecord(record) ||
+    typeof record.access_token !== "string" ||
+    typeof record.refresh_token !== "string"
+  ) {
     throw mapTikTokError(body, status || 400);
   }
   const expiresIn = asNumber(record.expires_in) ?? 86_400;
@@ -312,21 +464,35 @@ function readTokenPayload(body: unknown, status: number): { accessToken: string;
   };
 }
 
-async function tiktokGet(path: string, token: string, fields: string): Promise<unknown> {
+async function tiktokGet(
+  path: string,
+  token: string,
+  fields: string,
+): Promise<unknown> {
   const url = new URL(`${API}${path}`);
   url.searchParams.set("fields", fields);
-  const { status, body } = await requestJson(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+  const { status, body } = await requestJson(url.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (isScopeError(body)) return body;
   assertTikTokOk(status, body);
   return body;
 }
 
-async function tiktokPost(path: string, token: string, fields: string, payload: unknown): Promise<unknown> {
+async function tiktokPost(
+  path: string,
+  token: string,
+  fields: string,
+  payload: unknown,
+): Promise<unknown> {
   const url = new URL(`${API}${path}`);
   url.searchParams.set("fields", fields);
   const { status, body } = await requestJson(url.toString(), {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
   assertTikTokOk(status, body);
@@ -335,7 +501,8 @@ async function tiktokPost(path: string, token: string, fields: string, payload: 
 
 function assertTikTokOk(status: number, body: unknown): void {
   const code = tiktokCode(body);
-  if (status >= 400 || (code !== null && code !== "ok")) throw mapTikTokError(body, status || 400);
+  if (status >= 400 || (code !== null && code !== "ok"))
+    throw mapTikTokError(body, status || 400);
 }
 
 function isScopeError(body: unknown): boolean {
@@ -355,9 +522,25 @@ function tiktokNeedsRefresh(connection: StoredConnection<"tiktok">): boolean {
   return time - Date.now() <= 5 * 60 * 1000;
 }
 
-function pushCount(metrics: Metric[], key: string, label: string, value: number | null, unit: string, source: string): void {
+function pushCount(
+  metrics: Metric[],
+  key: string,
+  label: string,
+  value: number | null,
+  unit: string,
+  source: string,
+): void {
   if (value === null) return;
-  metrics.push(metric({ key, label, value, unit, aggregation: "content_lifetime_sum", source }));
+  metrics.push(
+    metric({
+      key,
+      label,
+      value,
+      unit,
+      aggregation: "content_lifetime_sum",
+      source,
+    }),
+  );
 }
 
 type TikTokVideo = {

@@ -16,7 +16,7 @@ import type {
 import type { CredentialStore } from "../store.js";
 import { asNumber, clipText, isRecord, readString } from "../util.js";
 import type { AnalyticsQuery, PlatformClient } from "./client.js";
-import { PlatformApiError } from "./errors.js";
+import { mapMetaError, PlatformApiError } from "./errors.js";
 import {
   FACEBOOK_GRAPH,
   fetchInsightMetrics,
@@ -27,7 +27,95 @@ import {
   seriesFromPoints,
   summedPoints,
 } from "./insights.js";
+import { requestJson } from "./http.js";
 import { rememberAccount, requireConnection } from "./remember.js";
+
+const FACEBOOK_DIALOG = "https://www.facebook.com/v26.0/dialog/oauth";
+const FACEBOOK_SCOPES = "pages_show_list,pages_read_engagement,read_insights";
+
+export function facebookAuthorizeUrl(args: {
+  appId: string;
+  redirectUri: string;
+  state: string;
+}): string {
+  const url = new URL(FACEBOOK_DIALOG);
+  url.searchParams.set("client_id", args.appId);
+  url.searchParams.set("redirect_uri", args.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", FACEBOOK_SCOPES);
+  url.searchParams.set("state", args.state);
+  return url.toString();
+}
+
+export async function exchangeFacebookCode(args: {
+  appId: string;
+  appSecret: string;
+  code: string;
+  redirectUri: string;
+  pageId: string | null;
+}): Promise<{ pageAccessToken: string; pageId: string; pageName: string }> {
+  const shortLived = await facebookUserToken({
+    client_id: args.appId,
+    client_secret: args.appSecret,
+    redirect_uri: args.redirectUri,
+    code: args.code,
+  });
+  const longLived = await facebookUserToken({
+    grant_type: "fb_exchange_token",
+    client_id: args.appId,
+    client_secret: args.appSecret,
+    fb_exchange_token: shortLived,
+  });
+  const pages = await listManagedPages(longLived);
+  const page = pickPage(pages, args.pageId);
+  return { pageAccessToken: page.accessToken, pageId: page.id, pageName: page.name };
+}
+
+async function facebookUserToken(params: Record<string, string>): Promise<string> {
+  const url = new URL(`${FACEBOOK_GRAPH}/oauth/access_token`);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  const { status, body } = await requestJson(url.toString());
+  if (isRecord(body) && typeof body.access_token === "string") return body.access_token;
+  throw mapMetaError(body, status || 400);
+}
+
+type ManagedPage = { id: string; name: string; accessToken: string };
+
+async function listManagedPages(token: string): Promise<ManagedPage[]> {
+  const body = await graphGet(FACEBOOK_GRAPH, "/me/accounts", token, { fields: "id,name,access_token" });
+  if (!isRecord(body) || !Array.isArray(body.data)) return [];
+  return body.data.flatMap((entry) => {
+    if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.access_token !== "string") return [];
+    const name = typeof entry.name === "string" ? entry.name : entry.id;
+    return [{ id: entry.id, name, accessToken: entry.access_token }];
+  });
+}
+
+function pickPage(pages: ManagedPage[], pageId: string | null): ManagedPage {
+  if (pageId) {
+    const match = pages.find((page) => page.id === pageId);
+    if (match) return match;
+    throw new PlatformApiError(
+      "not_configured",
+      "That Page id is not available to this login.",
+      "Clear the Page id or enter a Page this account manages, then sign in again.",
+    );
+  }
+  const only = pages[0];
+  if (pages.length === 1 && only) return only;
+  if (pages.length === 0) {
+    throw new PlatformApiError(
+      "not_configured",
+      "This login does not manage a Facebook Page.",
+      "Sign in with the account that manages the Page.",
+    );
+  }
+  throw new PlatformApiError(
+    "not_configured",
+    "This login manages more than one Page.",
+    "Enter the Page id on the settings page, then sign in again.",
+  );
+}
 
 const DAILY_METRICS = [
   ["page_media_view", "views"],
@@ -56,10 +144,8 @@ export const facebookClient: PlatformClient = {
 
 async function testFacebook(store: CredentialStore): Promise<AccountProfile> {
   const connection = requireConnection(store, "facebook");
-  const page = await fetchPage(
-    connection.credentials.pageAccessToken,
-    connection.credentials.pageId,
-  );
+  const token = requirePageToken(connection.credentials.pageAccessToken);
+  const page = await fetchPage(token, connection.credentials.pageId);
   store.save(
     "facebook",
     { ...connection.credentials, pageId: page.pageId },
@@ -74,7 +160,7 @@ async function loadFacebook(
   mode: "analytics" | "content",
 ): Promise<PlatformReport> {
   const connection = requireConnection(store, "facebook");
-  const token = connection.credentials.pageAccessToken;
+  const token = requirePageToken(connection.credentials.pageAccessToken);
   const today = formatIsoDate(new Date());
   const period = clampLookback(
     query.period,
@@ -84,7 +170,7 @@ async function loadFacebook(
   const page = await fetchPage(token, connection.credentials.pageId);
   store.save(
     "facebook",
-    { pageAccessToken: token, pageId: page.pageId },
+    { ...connection.credentials, pageAccessToken: token, pageId: page.pageId },
     { account: page.account },
   );
   const wantSummary = mode === "analytics" && query.include !== "content";
@@ -545,6 +631,17 @@ function pushLifetime(
       source,
     }),
   );
+}
+
+function requirePageToken(token: string | null): string {
+  if (!token) {
+    throw new PlatformApiError(
+      "not_configured",
+      "Facebook is not signed in yet.",
+      "Save the app id and secret, then use Sign in on the settings page.",
+    );
+  }
+  return token;
 }
 
 async function fetchPage(

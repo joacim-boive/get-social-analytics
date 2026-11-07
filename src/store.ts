@@ -18,7 +18,7 @@ type ConnectionRow = {
 };
 
 export type StoredOAuth = {
-  provider: "tiktok" | "youtube";
+  provider: PlatformId;
   verifier: string;
   redirectUri: string;
   createdAt: number;
@@ -161,9 +161,10 @@ export function openStore(dbPath = DEFAULT_PATH): SqliteStore {
       removeOAuth.run(state);
       if (!isOAuthRow(row)) return null;
       if (Date.now() - row.created_at > 10 * 60 * 1000) return null;
-      if (row.provider !== "tiktok" && row.provider !== "youtube") return null;
+      if (!isPlatformId(row.provider)) return null;
+      const provider = row.provider;
       return {
-        provider: row.provider,
+        provider,
         verifier: row.verifier,
         redirectUri: row.redirect_uri,
         createdAt: row.created_at,

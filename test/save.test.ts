@@ -22,7 +22,7 @@ describe("blank secret saves", () => {
     });
     store.save(
       "instagram",
-      { accessToken: "igaatoken1234", appSecret: "appsecret1234" },
+      { appId: null, accessToken: "igaatoken1234", appSecret: "appsecret1234" },
       { tokenExpiresAt: "2026-12-01T00:00:00.000Z" },
     );
     saveConnection(store, "instagram", { accessToken: "", appSecret: "" });
@@ -50,7 +50,7 @@ describe("blank secret saves", () => {
     const store = tempStore();
     store.save(
       "facebook",
-      { pageAccessToken: "page-token-1234", pageId: "998877" },
+      { appId: null, appSecret: null, pageAccessToken: "page-token-1234", pageId: "998877" },
       { tokenExpiresAt: "2026-12-01T00:00:00.000Z" },
     );
     saveConnection(store, "facebook", { pageAccessToken: "" });

@@ -1,5 +1,5 @@
-import type { CredentialStore } from "../store.js";
 import type { PlatformId } from "../report/types.js";
+import type { CredentialStore } from "../store.js";
 import { isRecord, readString } from "../util.js";
 
 export class SettingsError extends Error {
@@ -9,7 +9,11 @@ export class SettingsError extends Error {
   }
 }
 
-export function saveConnection(store: CredentialStore, platform: PlatformId, body: unknown): void {
+export function saveConnection(
+  store: CredentialStore,
+  platform: PlatformId,
+  body: unknown,
+): void {
   if (!isRecord(body)) throw new SettingsError("The form was empty.");
   if (platform === "instagram") {
     saveInstagram(store, body);
@@ -26,30 +30,103 @@ export function saveConnection(store: CredentialStore, platform: PlatformId, bod
   saveYouTube(store, body);
 }
 
-function saveInstagram(store: CredentialStore, body: Record<string, unknown>): void {
+function saveInstagram(
+  store: CredentialStore,
+  body: Record<string, unknown>,
+): void {
   const existing = store.get("instagram");
-  const accessToken = secretField(body, "accessToken", existing?.credentials.accessToken ?? null, "Access token");
-  const appSecret = secretField(body, "appSecret", existing?.credentials.appSecret ?? null, "App secret");
+  const appId = optionalPublic(
+    body,
+    "appId",
+    existing?.credentials.appId ?? null,
+  );
+  const accessToken = optionalSecret(
+    body,
+    "accessToken",
+    existing?.credentials.accessToken ?? null,
+  );
+  if (!accessToken.value && !appId)
+    throw new SettingsError("App id is required.");
+  const appSecret = secretField(
+    body,
+    "appSecret",
+    existing?.credentials.appSecret ?? null,
+    "App secret",
+  );
   store.save(
     "instagram",
-    { accessToken: accessToken.value, appSecret: appSecret.value },
+    { appId, appSecret: appSecret.value, accessToken: accessToken.value },
     accessToken.replaced ? { tokenExpiresAt: null } : {},
   );
 }
 
-function saveFacebook(store: CredentialStore, body: Record<string, unknown>): void {
+function saveFacebook(
+  store: CredentialStore,
+  body: Record<string, unknown>,
+): void {
   const existing = store.get("facebook");
-  const pageAccessToken = secretField(body, "pageAccessToken", existing?.credentials.pageAccessToken ?? null, "Page access token");
-  const pageId = "pageId" in body ? blankToNull(body.pageId) : (existing?.credentials.pageId ?? null);
-  store.save("facebook", { pageAccessToken: pageAccessToken.value, pageId }, pageAccessToken.replaced ? { tokenExpiresAt: null } : {});
+  const appId = optionalPublic(
+    body,
+    "appId",
+    existing?.credentials.appId ?? null,
+  );
+  const appSecret = optionalSecret(
+    body,
+    "appSecret",
+    existing?.credentials.appSecret ?? null,
+  );
+  const pageAccessToken = optionalSecret(
+    body,
+    "pageAccessToken",
+    existing?.credentials.pageAccessToken ?? null,
+  );
+  const pageId =
+    "pageId" in body
+      ? blankToNull(body.pageId)
+      : (existing?.credentials.pageId ?? null);
+  if (!pageAccessToken.value && !appId)
+    throw new SettingsError("App id is required.");
+  if (!pageAccessToken.value && !appSecret.value)
+    throw new SettingsError("App secret is required.");
+  store.save(
+    "facebook",
+    {
+      appId,
+      appSecret: appSecret.value,
+      pageAccessToken: pageAccessToken.value,
+      pageId,
+    },
+    pageAccessToken.replaced ? { tokenExpiresAt: null } : {},
+  );
 }
 
-function saveTikTok(store: CredentialStore, body: Record<string, unknown>): void {
+function saveTikTok(
+  store: CredentialStore,
+  body: Record<string, unknown>,
+): void {
   const existing = store.get("tiktok");
-  const clientKey = publicField(body, "clientKey", existing?.credentials.clientKey ?? null, "Client key");
-  const clientSecret = secretField(body, "clientSecret", existing?.credentials.clientSecret ?? null, "Client secret");
-  const accessToken = secretField(body, "accessToken", existing?.credentials.accessToken ?? null, "Access token");
-  const refreshToken = secretField(body, "refreshToken", existing?.credentials.refreshToken ?? null, "Refresh token");
+  const clientKey = publicField(
+    body,
+    "clientKey",
+    existing?.credentials.clientKey ?? null,
+    "Client key",
+  );
+  const clientSecret = secretField(
+    body,
+    "clientSecret",
+    existing?.credentials.clientSecret ?? null,
+    "Client secret",
+  );
+  const accessToken = optionalSecret(
+    body,
+    "accessToken",
+    existing?.credentials.accessToken ?? null,
+  );
+  const refreshToken = optionalSecret(
+    body,
+    "refreshToken",
+    existing?.credentials.refreshToken ?? null,
+  );
   const replaced = accessToken.replaced || refreshToken.replaced;
   store.save(
     "tiktok",
@@ -64,18 +141,37 @@ function saveTikTok(store: CredentialStore, body: Record<string, unknown>): void
   );
 }
 
-function saveYouTube(store: CredentialStore, body: Record<string, unknown>): void {
+function saveYouTube(
+  store: CredentialStore,
+  body: Record<string, unknown>,
+): void {
   const existing = store.get("youtube");
-  const clientId = publicField(body, "clientId", existing?.credentials.clientId ?? null, "Client id");
-  const clientSecret = secretField(body, "clientSecret", existing?.credentials.clientSecret ?? null, "Client secret");
-  const refreshToken = optionalSecret(body, "refreshToken", existing?.credentials.refreshToken ?? null);
+  const clientId = publicField(
+    body,
+    "clientId",
+    existing?.credentials.clientId ?? null,
+    "Client id",
+  );
+  const clientSecret = secretField(
+    body,
+    "clientSecret",
+    existing?.credentials.clientSecret ?? null,
+    "Client secret",
+  );
+  const refreshToken = optionalSecret(
+    body,
+    "refreshToken",
+    existing?.credentials.refreshToken ?? null,
+  );
   store.save(
     "youtube",
     {
       clientId: clientId.value,
       clientSecret: clientSecret.value,
       refreshToken: refreshToken.value,
-      accessToken: refreshToken.replaced ? null : (existing?.credentials.accessToken ?? null),
+      accessToken: refreshToken.replaced
+        ? null
+        : (existing?.credentials.accessToken ?? null),
     },
     refreshToken.replaced ? { tokenExpiresAt: null } : {},
   );
@@ -101,8 +197,19 @@ function optionalSecret(
   existing: string | null,
 ): { value: string | null; replaced: boolean } {
   const incoming = readString(body, key);
-  if (!incoming || incoming.startsWith("••••")) return { value: existing, replaced: false };
+  if (!incoming || incoming.startsWith("••••"))
+    return { value: existing, replaced: false };
   return { value: incoming, replaced: true };
+}
+
+function optionalPublic(
+  body: Record<string, unknown>,
+  key: string,
+  existing: string | null,
+): string | null {
+  const incoming = readString(body, key);
+  if (!incoming) return existing;
+  return incoming;
 }
 
 function publicField(

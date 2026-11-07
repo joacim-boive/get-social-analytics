@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   clerkAuthorizedParties,
   readDevBrowserToken,
+  settleBrowserAuth,
   signInRedirect,
   unauthenticatedResponse,
   withSessionCookies,
@@ -126,6 +127,21 @@ describe("Clerk sign-in return", () => {
     const response = withSessionCookies(Response.json({ ok: true }), headers);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.getSetCookie()).toEqual(["__session=signed; Path=/; HttpOnly; Secure"]);
+  });
+
+  it("turns an API sign-in redirect into JSON and leaves the page redirect alone", async () => {
+    const redirect = new Response(null, {
+      status: 307,
+      headers: { location: "https://example.accounts.dev/sign-in" },
+    });
+    const api = settleBrowserAuth(new Request(`${origin}/api/connections/youtube`), redirect);
+    expect(api.status).toBe(401);
+    expect(await api.json()).toEqual({ ok: false, message: "Sign in again, then retry." });
+    const page = settleBrowserAuth(new Request(`${origin}/`), redirect);
+    expect(page.status).toBe(307);
+    expect(page.headers.get("location")).toBe("https://example.accounts.dev/sign-in");
+    const oauth = settleBrowserAuth(new Request(`${origin}/oauth/youtube/start`), redirect);
+    expect(oauth.status).toBe(307);
   });
 
   it("authorizes the host the browser actually used", () => {
