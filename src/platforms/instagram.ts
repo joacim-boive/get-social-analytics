@@ -32,6 +32,17 @@ import {
 } from "./insights.js";
 import { rememberAccount, requireConnection } from "./remember.js";
 
+export function instagramAppConfig(stored?: {
+  appId: string | null;
+  appSecret: string | null;
+} | null): { appId: string; appSecret: string } | null {
+  const envId = process.env.META_APP_ID?.trim() ?? "";
+  const envSecret = process.env.META_APP_SECRET?.trim() ?? "";
+  if (envId && envSecret) return { appId: envId, appSecret: envSecret };
+  if (stored?.appId && stored.appSecret) return { appId: stored.appId, appSecret: stored.appSecret };
+  return null;
+}
+
 export function instagramAuthorizeUrl(args: {
   appId: string;
   redirectUri: string;
@@ -43,7 +54,6 @@ export function instagramAuthorizeUrl(args: {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "instagram_business_basic,instagram_business_manage_insights");
   url.searchParams.set("state", args.state);
-  url.searchParams.set("enable_fb_login", "0");
   return url.toString();
 }
 
@@ -602,7 +612,7 @@ async function withInstagramToken<T>(
     throw new PlatformApiError(
       "not_configured",
       "Instagram is not signed in yet.",
-      "Save the app id and secret, then use Sign in on the settings page.",
+      "Use Sign in on the settings page.",
     );
   }
   try {
@@ -616,7 +626,7 @@ async function withInstagramToken<T>(
       throw new PlatformApiError(
         "not_configured",
         "Instagram is not signed in yet.",
-        "Save the app id and secret, then use Sign in on the settings page.",
+        "Use Sign in on the settings page.",
       );
     }
     return fn(next);
@@ -649,7 +659,7 @@ export async function refreshInstagramCredentials(
       throw new PlatformApiError(
         "not_configured",
         "Instagram is not signed in yet.",
-        "Save the app id and secret, then use Sign in on the settings page.",
+        "Use Sign in on the settings page.",
       );
     }
     try {
@@ -667,11 +677,13 @@ export async function refreshInstagramCredentials(
       );
     } catch (refreshError) {
       try {
+        const secret = instagramAppConfig(current.credentials)?.appSecret;
+        if (!secret) throw refreshError;
         const exchanged = await postInstagramToken(
           "https://graph.instagram.com/access_token",
           {
             grant_type: "ig_exchange_token",
-            client_secret: current.credentials.appSecret,
+            client_secret: secret,
             access_token: currentToken,
           },
         );

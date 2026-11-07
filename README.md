@@ -122,9 +122,9 @@ Shared summary keys, filled only when the mapping is real:
 
 ### What each platform can actually return
 
-**Instagram.** Account reach, views, and engagements for about the last 90 days. Daily follower totals cover about 30 days. Media counts are lifetime totals for posts published in the range. Accounts under 100 followers often get an empty insight set. That is reported as unavailable, rather than as zero. Needs a professional account. Sign in with Instagram, or paste a long-lived token. [Instagram login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login).
+**Instagram.** Account reach, views, and engagements for about the last 90 days. Daily follower totals cover about 30 days. Media counts are lifetime totals for posts published in the range. Accounts under 100 followers often get an empty insight set. That is reported as unavailable, rather than as zero. Sign in with the professional account. The handle comes back from Instagram. [Instagram login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login).
 
-**Facebook.** Page views, post engagements, and follow changes, plus the current follower count. Reach is included only when Facebook returns one unique count for the whole range. Daily unique counts are not added together. Post reactions, comments, and shares are lifetime totals. Sign in with the account that manages the Page, or paste a Page access token. Scopes: `pages_show_list`, `pages_read_engagement`, `read_insights`. Enter a Page id when the login manages more than one Page. [Pages docs](https://developers.facebook.com/docs/pages-api/getting-started).
+**Facebook.** Page views, post engagements, and follow changes, plus the current follower count. Reach is included only when Facebook returns one unique count for the whole range. Daily unique counts are not added together. Post reactions, comments, and shares are lifetime totals. Sign in with Facebook, then choose the Page when that account manages more than one. [Pages docs](https://developers.facebook.com/docs/pages-api/getting-started).
 
 **TikTok.** Current follower count, plus lifetime view, like, comment, and share counts for public videos posted in the range. TikTok's display API has no period analytics, so "last 7 days" means videos published in those 7 days. Their view totals are labeled `content_lifetime_sum`. Scopes: `user.info.basic`, `user.info.stats`, `video.list`. The access token expires in 24 hours. This server refreshes it and stores the rotated refresh token. [Login Kit](https://developers.tiktok.com/doc/login-kit-web).
 
@@ -132,11 +132,11 @@ Shared summary keys, filled only when the mapping is real:
 
 ## Connect a platform
 
-1. Create the developer app and add the redirect URI printed on the card. With the default port those are `http://127.0.0.1:8787/oauth/instagram/callback`, `http://127.0.0.1:8787/oauth/facebook/callback`, `http://127.0.0.1:8787/oauth/tiktok/callback`, and `http://127.0.0.1:8787/oauth/youtube/callback`.
-2. Save the app id or client id, and the secret. Leave the token fields blank.
-3. Use **Sign in on this computer**.
+Instagram and Facebook use the same Meta app as social-inbox. Set `META_APP_ID`, `META_APP_SECRET`, `META_FACEBOOK_APP_ID`, and `META_FACEBOOK_APP_SECRET` on the server. Add this app's redirect URIs on that Meta app: `{origin}/oauth/instagram/callback` and `{origin}/oauth/facebook/callback`. The settings page does not ask for an app id. Use **Sign in**.
 
-Pasting a token still works. YouTube can be saved with only the client id and secret until sign-in returns a refresh token. Instagram sign-in uses Instagram Login. Facebook sign-in stores the Page token for the Page you manage.
+TikTok and YouTube still need a client id and secret saved on the card, then **Sign in**. With the default port their redirect URIs are `http://127.0.0.1:8787/oauth/tiktok/callback` and `http://127.0.0.1:8787/oauth/youtube/callback`.
+
+Pasting a token still works for TikTok and YouTube. YouTube can be saved with only the client id and secret until sign-in returns a refresh token.
 
 If Google does not return a refresh token, remove the app's access at [Google Account permissions](https://myaccount.google.com/permissions) and sign in again.
 

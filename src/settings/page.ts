@@ -12,12 +12,12 @@ export type PageNotice = {
 const HELP: Record<PlatformId, { summary: string; docs: string }> = {
   instagram: {
     summary:
-      "Create an Instagram app, register the redirect below, then save the app id and secret and use Sign in. The login needs instagram_business_basic and instagram_business_manage_insights. A pasted long-lived token still works. Host: graph.instagram.com.",
+      "Sign in with the Instagram account you want to measure. It needs to be a professional account. Instagram returns the handle after you sign in.",
     docs: "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login",
   },
   facebook: {
     summary:
-      "Create a Meta app, register the redirect below, then save the app id and secret and use Sign in. The login needs pages_show_list, pages_read_engagement, and read_insights. Enter a Page id when the account manages more than one Page. A pasted Page token still works.",
+      "Sign in with Facebook. If that account manages more than one Page, choose the Page to measure.",
     docs: "https://developers.facebook.com/docs/pages-api/getting-started",
   },
   tiktok: {
@@ -326,26 +326,53 @@ export function renderSettingsPage(args: {
         }
       });
       const signIn = form.querySelector("[data-action=signin]");
-      if (!signIn) continue;
-      signIn.addEventListener("click", async () => {
-        const result = form.querySelector(".result");
-        result.textContent = "Saving, then opening sign-in…";
-        result.className = "result";
-        try {
-          const posted = await postJson("/api/connections/" + form.dataset.platform, formPayload(form));
-          if (!posted) return;
-          if (posted.data.connection) applyConnection(form, posted.data.connection);
-          if (!posted.response.ok || posted.data.ok === false) {
-            result.textContent = posted.data.message || "Save the app credentials before signing in.";
-            result.className = "result error";
+      if (signIn) {
+        signIn.addEventListener("click", async () => {
+          const result = form.querySelector(".result");
+          if (!form.querySelector("input[name]")) {
+            result.textContent = "Opening sign-in…";
+            result.className = "result";
+            window.location.href = "/oauth/" + form.dataset.platform + "/start";
             return;
           }
-          window.location.href = "/oauth/" + form.dataset.platform + "/start";
-        } catch (error) {
-          result.textContent = "The settings server did not respond.";
-          result.className = "result error";
-        }
-      });
+          result.textContent = "Saving, then opening sign-in…";
+          result.className = "result";
+          try {
+            const posted = await postJson("/api/connections/" + form.dataset.platform, formPayload(form));
+            if (!posted) return;
+            if (posted.data.connection) applyConnection(form, posted.data.connection);
+            if (!posted.response.ok || posted.data.ok === false) {
+              result.textContent = posted.data.message || "Save the app credentials before signing in.";
+              result.className = "result error";
+              return;
+            }
+            window.location.href = "/oauth/" + form.dataset.platform + "/start";
+          } catch (error) {
+            result.textContent = "The settings server did not respond.";
+            result.className = "result error";
+          }
+        });
+      }
+      for (const choice of form.querySelectorAll("[data-page-id]")) {
+        choice.addEventListener("click", async () => {
+          const result = form.querySelector(".result");
+          result.textContent = "Connecting that Page…";
+          result.className = "result";
+          try {
+            const posted = await postJson("/api/connections/facebook/choose", { pageId: choice.dataset.pageId });
+            if (!posted) return;
+            if (!posted.response.ok || posted.data.ok === false) {
+              result.textContent = posted.data.message || "Something went wrong.";
+              result.className = "result error";
+              return;
+            }
+            window.location.href = "/?connected=facebook";
+          } catch (error) {
+            result.textContent = "The settings server did not respond.";
+            result.className = "result error";
+          }
+        });
+      }
     }
 
     function formPayload(form) {
@@ -562,8 +589,20 @@ function renderCard(connection: PublicConnection, origin: string): string {
         <input id="${platform}-${field.name}" name="${field.name}" type="${type}" autocomplete="off" spellcheck="false" placeholder="${escapeHtml(placeholder)}"${value}${emptyHint} />`;
     })
     .join("");
-  const redirect = `<p class="docs">Redirect URI<br /><code>${escapeHtml(`${origin}/oauth/${platform}/callback`)}</code></p>`;
+  const hasFields = PLATFORM_FIELDS[platform].length > 0;
+  const redirect = hasFields
+    ? `<p class="docs">Redirect URI<br /><code>${escapeHtml(`${origin}/oauth/${platform}/callback`)}</code></p>`
+    : "";
   const signIn = `<button class="text-button" type="button" data-action="signin">Sign in</button>`;
+  const saveButton = hasFields
+    ? `<button class="secondary" type="submit" data-action="save">Save</button>`
+    : "";
+  const pageChoices = connection.choices
+    .map(
+      (choice) =>
+        `<button class="secondary" type="button" data-page-id="${escapeHtml(choice.id)}">${escapeHtml(choice.name)}</button>`,
+    )
+    .join("");
   return `<form class="card" data-platform="${platform}">
     <div class="card-head">
       <h2>${platformLabel(platform)}</h2>
@@ -576,8 +615,9 @@ function renderCard(connection: PublicConnection, origin: string): string {
       ${redirect}
     </details>
     ${fields}
+    ${pageChoices ? `<div class="actions">${pageChoices}</div>` : ""}
     <div class="actions">
-      <button class="secondary" type="submit" data-action="save">Save</button>
+      ${saveButton}
       <button class="primary" type="submit" data-action="test">Test connection</button>
       ${signIn}
     </div>

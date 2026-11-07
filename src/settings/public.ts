@@ -17,6 +17,7 @@ export type PublicConnection = {
   account: AccountProfile | null;
   tokenExpiresAt: string | null;
   fields: Record<string, PublicField>;
+  choices: { id: string; name: string }[];
 };
 
 export function listPublic(store: CredentialStore): PublicConnection[] {
@@ -44,7 +45,13 @@ export function toPublic(store: CredentialStore, platform: PlatformId): PublicCo
     account: connection?.account ?? null,
     tokenExpiresAt: connection?.tokenExpiresAt ?? null,
     fields,
+    choices: pageChoices(connection?.credentials),
   };
+}
+
+function pageChoices(credentials: CredentialMap[PlatformId] | undefined): { id: string; name: string }[] {
+  if (!credentials || !("pendingPages" in credentials) || !credentials.pendingPages) return [];
+  return credentials.pendingPages.map((page) => ({ id: page.id, name: page.name }));
 }
 
 function credentialField(credentials: CredentialMap[PlatformId], name: string): string | null {

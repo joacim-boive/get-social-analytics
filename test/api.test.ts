@@ -173,10 +173,14 @@ describe("settings page", () => {
     const html = await response.text();
     expect(html).toContain('max="730"');
     expect(html).toContain("Days must be a whole number from 1 to 730.");
-    expect(html).toContain("/oauth/instagram/callback");
-    expect(html).toContain("/oauth/facebook/callback");
+    expect(html).toContain("/oauth/tiktok/callback");
+    expect(html).toContain("/oauth/youtube/callback");
+    expect(html).not.toContain("/oauth/instagram/callback");
     expect(html).toContain("session.getToken()");
     expect(html.match(/data-action="signin"/g)).toHaveLength(4);
+    expect(html).not.toContain('id="instagram-appId"');
+    expect(html).not.toContain('id="facebook-appId"');
+    expect(html).toContain('form.querySelector("input[name]")');
     store.close();
   });
 });

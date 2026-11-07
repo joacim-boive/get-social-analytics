@@ -55,7 +55,7 @@ These are product rules. A change that makes the JSON easier to produce by weake
 - YouTube can be saved with only the client id and secret. `refreshToken` stays null until sign-in or a pasted token. Do not call Google's token endpoint without one.
 - TikTok and YouTube refresh tokens are rotated under `store.withLock`. Re-read inside the lock. If another process already replaced the failed access token, keep that replacement and do not refresh again.
 - OAuth redirects are the hosted origin plus `/oauth/<provider>/callback`, or localhost for tests. Reject any other host.
-- Every platform can sign in from the settings page. Instagram uses Instagram Login. Facebook stores the Page token from the managing account. Pasting a token remains a fallback. Do not send a PKCE challenge to Meta.
+- Every platform can sign in from the settings page. Instagram and Facebook use the server's Meta app (`META_APP_ID`, `META_APP_SECRET`, `META_FACEBOOK_APP_ID`, `META_FACEBOOK_APP_SECRET`), the same app as social-inbox. The settings page does not ask for those ids. Instagram uses Instagram Login. Facebook stores the Page token from the managing account and asks which Page when there is more than one. Pasting a token remains a fallback for TikTok and YouTube. Do not send a PKCE challenge to Meta.
 
 ## Code
 

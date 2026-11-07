@@ -30,15 +30,32 @@ import {
 import { requestJson } from "./http.js";
 import { rememberAccount, requireConnection } from "./remember.js";
 
-const FACEBOOK_DIALOG = "https://www.facebook.com/v26.0/dialog/oauth";
 const FACEBOOK_SCOPES = "pages_show_list,pages_read_engagement,read_insights";
+
+export type FacebookPageGrant = { id: string; name: string; accessToken: string };
+
+export type FacebookSignIn =
+  | { status: "connected"; pageAccessToken: string; pageId: string; pageName: string }
+  | { status: "choose"; pages: FacebookPageGrant[] };
+
+export function facebookAppConfig(stored?: {
+  appId: string | null;
+  appSecret: string | null;
+} | null): { appId: string; appSecret: string } | null {
+  const envId = process.env.META_FACEBOOK_APP_ID?.trim() ?? "";
+  const envSecret = process.env.META_FACEBOOK_APP_SECRET?.trim() ?? "";
+  if (envId && envSecret) return { appId: envId, appSecret: envSecret };
+  if (stored?.appId && stored.appSecret) return { appId: stored.appId, appSecret: stored.appSecret };
+  return null;
+}
 
 export function facebookAuthorizeUrl(args: {
   appId: string;
   redirectUri: string;
   state: string;
 }): string {
-  const url = new URL(FACEBOOK_DIALOG);
+  const version = FACEBOOK_GRAPH.split("/").at(-1) ?? "v26.0";
+  const url = new URL(`https://www.facebook.com/${version}/dialog/oauth`);
   url.searchParams.set("client_id", args.appId);
   url.searchParams.set("redirect_uri", args.redirectUri);
   url.searchParams.set("response_type", "code");
@@ -53,7 +70,7 @@ export async function exchangeFacebookCode(args: {
   code: string;
   redirectUri: string;
   pageId: string | null;
-}): Promise<{ pageAccessToken: string; pageId: string; pageName: string }> {
+}): Promise<FacebookSignIn> {
   const shortLived = await facebookUserToken({
     client_id: args.appId,
     client_secret: args.appSecret,
@@ -67,8 +84,9 @@ export async function exchangeFacebookCode(args: {
     fb_exchange_token: shortLived,
   });
   const pages = await listManagedPages(longLived);
+  if (!args.pageId && pages.length > 1) return { status: "choose", pages };
   const page = pickPage(pages, args.pageId);
-  return { pageAccessToken: page.accessToken, pageId: page.id, pageName: page.name };
+  return { status: "connected", pageAccessToken: page.accessToken, pageId: page.id, pageName: page.name };
 }
 
 async function facebookUserToken(params: Record<string, string>): Promise<string> {
@@ -79,9 +97,7 @@ async function facebookUserToken(params: Record<string, string>): Promise<string
   throw mapMetaError(body, status || 400);
 }
 
-type ManagedPage = { id: string; name: string; accessToken: string };
-
-async function listManagedPages(token: string): Promise<ManagedPage[]> {
+async function listManagedPages(token: string): Promise<FacebookPageGrant[]> {
   const body = await graphGet(FACEBOOK_GRAPH, "/me/accounts", token, { fields: "id,name,access_token" });
   if (!isRecord(body) || !Array.isArray(body.data)) return [];
   return body.data.flatMap((entry) => {
@@ -91,14 +107,14 @@ async function listManagedPages(token: string): Promise<ManagedPage[]> {
   });
 }
 
-function pickPage(pages: ManagedPage[], pageId: string | null): ManagedPage {
+function pickPage(pages: FacebookPageGrant[], pageId: string | null): FacebookPageGrant {
   if (pageId) {
     const match = pages.find((page) => page.id === pageId);
     if (match) return match;
     throw new PlatformApiError(
       "not_configured",
       "That Page id is not available to this login.",
-      "Clear the Page id or enter a Page this account manages, then sign in again.",
+      "Sign in again and choose a Page this account manages.",
     );
   }
   const only = pages[0];
@@ -113,7 +129,7 @@ function pickPage(pages: ManagedPage[], pageId: string | null): ManagedPage {
   throw new PlatformApiError(
     "not_configured",
     "This login manages more than one Page.",
-    "Enter the Page id on the settings page, then sign in again.",
+    "Choose the Page on the settings page.",
   );
 }
 
@@ -638,7 +654,7 @@ function requirePageToken(token: string | null): string {
     throw new PlatformApiError(
       "not_configured",
       "Facebook is not signed in yet.",
-      "Save the app id and secret, then use Sign in on the settings page.",
+      "Use Sign in on the settings page.",
     );
   }
   return token;

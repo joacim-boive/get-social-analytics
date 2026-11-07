@@ -35,24 +35,13 @@ function saveInstagram(
   body: Record<string, unknown>,
 ): void {
   const existing = store.get("instagram");
-  const appId = optionalPublic(
-    body,
-    "appId",
-    existing?.credentials.appId ?? null,
-  );
-  const accessToken = optionalSecret(
-    body,
-    "accessToken",
-    existing?.credentials.accessToken ?? null,
-  );
-  if (!accessToken.value && !appId)
-    throw new SettingsError("App id is required.");
-  const appSecret = secretField(
-    body,
-    "appSecret",
-    existing?.credentials.appSecret ?? null,
-    "App secret",
-  );
+  const appId = optionalPublic(body, "appId", existing?.credentials.appId ?? null);
+  const accessToken = optionalSecret(body, "accessToken", existing?.credentials.accessToken ?? null);
+  const appSecret = optionalSecret(body, "appSecret", existing?.credentials.appSecret ?? null);
+  if (!accessToken.value) {
+    if (existing) return;
+    throw new SettingsError("Sign in with Instagram first.");
+  }
   store.save(
     "instagram",
     { appId, appSecret: appSecret.value, accessToken: accessToken.value },
@@ -65,36 +54,24 @@ function saveFacebook(
   body: Record<string, unknown>,
 ): void {
   const existing = store.get("facebook");
-  const appId = optionalPublic(
-    body,
-    "appId",
-    existing?.credentials.appId ?? null,
-  );
-  const appSecret = optionalSecret(
-    body,
-    "appSecret",
-    existing?.credentials.appSecret ?? null,
-  );
   const pageAccessToken = optionalSecret(
     body,
     "pageAccessToken",
     existing?.credentials.pageAccessToken ?? null,
   );
-  const pageId =
-    "pageId" in body
-      ? blankToNull(body.pageId)
-      : (existing?.credentials.pageId ?? null);
-  if (!pageAccessToken.value && !appId)
-    throw new SettingsError("App id is required.");
-  if (!pageAccessToken.value && !appSecret.value)
-    throw new SettingsError("App secret is required.");
+  const pageId = "pageId" in body ? blankToNull(body.pageId) : (existing?.credentials.pageId ?? null);
+  if (!pageAccessToken.value) {
+    if (existing) return;
+    throw new SettingsError("Sign in with Facebook first.");
+  }
   store.save(
     "facebook",
     {
-      appId,
-      appSecret: appSecret.value,
+      appId: existing?.credentials.appId ?? null,
+      appSecret: existing?.credentials.appSecret ?? null,
       pageAccessToken: pageAccessToken.value,
       pageId,
+      pendingPages: null,
     },
     pageAccessToken.replaced ? { tokenExpiresAt: null } : {},
   );

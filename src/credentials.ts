@@ -3,8 +3,14 @@ import { isRecord, readString } from "./util.js";
 
 export type InstagramCredentials = {
   appId: string | null;
-  appSecret: string;
+  appSecret: string | null;
   accessToken: string | null;
+};
+
+export type FacebookPageChoice = {
+  id: string;
+  name: string;
+  accessToken: string;
 };
 
 export type FacebookCredentials = {
@@ -12,6 +18,7 @@ export type FacebookCredentials = {
   appSecret: string | null;
   pageAccessToken: string | null;
   pageId: string | null;
+  pendingPages: FacebookPageChoice[] | null;
 };
 
 export type TikTokCredentials = {
@@ -60,7 +67,7 @@ function parseInstagram(value: unknown): InstagramCredentials {
   const appId = readString(record, "appId");
   const appSecret = readString(record, "appSecret");
   const accessToken = readString(record, "accessToken");
-  if (!appSecret || (!appId && !accessToken)) {
+  if (!accessToken && !(appId && appSecret)) {
     throw new Error("Instagram credentials are incomplete.");
   }
   return { appId, appSecret, accessToken };
@@ -72,10 +79,25 @@ function parseFacebook(value: unknown): FacebookCredentials {
   const appSecret = readString(record, "appSecret");
   const pageAccessToken = readString(record, "pageAccessToken");
   const pageId = readString(record, "pageId");
-  if (!pageAccessToken && (!appId || !appSecret)) {
+  const pendingPages = parsePendingPages(record.pendingPages);
+  if (!pageAccessToken && !pendingPages && (!appId || !appSecret)) {
     throw new Error("Facebook credentials are incomplete.");
   }
-  return { appId, appSecret, pageAccessToken, pageId };
+  return { appId, appSecret, pageAccessToken, pageId, pendingPages };
+}
+
+function parsePendingPages(value: unknown): FacebookPageChoice[] | null {
+  if (!Array.isArray(value)) return null;
+  const pages = value.flatMap((entry) => {
+    if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.access_token !== "string" && typeof entry.accessToken !== "string") {
+      return [];
+    }
+    const accessToken = typeof entry.accessToken === "string" ? entry.accessToken : entry.access_token;
+    if (typeof accessToken !== "string") return [];
+    const name = typeof entry.name === "string" ? entry.name : entry.id;
+    return [{ id: entry.id, name, accessToken }];
+  });
+  return pages.length > 0 ? pages : null;
 }
 
 function parseTikTok(value: unknown): TikTokCredentials {

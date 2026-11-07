@@ -18,6 +18,10 @@ const directories: string[] = [];
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete process.env.META_APP_ID;
+  delete process.env.META_APP_SECRET;
+  delete process.env.META_FACEBOOK_APP_ID;
+  delete process.env.META_FACEBOOK_APP_SECRET;
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -45,6 +49,7 @@ describe("platform sign-in", () => {
       appSecret: null,
       pageAccessToken: "page-token",
       pageId: "12",
+      pendingPages: null,
     });
   });
 
@@ -62,8 +67,8 @@ describe("platform sign-in", () => {
     expect(instagram.searchParams.get("scope")).toBe(
       "instagram_business_basic,instagram_business_manage_insights",
     );
-    expect(instagram.searchParams.get("enable_fb_login")).toBe("0");
     expect(instagram.searchParams.has("code_challenge")).toBe(false);
+    expect(instagram.searchParams.has("enable_fb_login")).toBe(false);
 
     const facebook = new URL(
       facebookAuthorizeUrl({
@@ -82,19 +87,8 @@ describe("platform sign-in", () => {
 
   it("sends Instagram and YouTube sign-in to the provider after the app credentials are saved", async () => {
     const { app, store } = tempApp();
-    const instagramSave = await app.request(
-      "http://127.0.0.1:8787/api/connections/instagram",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          appId: "ig-app",
-          appSecret: "ig-secret",
-          accessToken: "",
-        }),
-      },
-    );
-    expect(instagramSave.status).toBe(200);
+    process.env.META_APP_ID = "ig-app";
+    process.env.META_APP_SECRET = "ig-secret";
     const instagramStart = await app.request(
       "http://127.0.0.1:8787/oauth/instagram/start",
     );
@@ -131,11 +125,8 @@ describe("platform sign-in", () => {
 
   it("stores the long-lived Instagram token from the callback", async () => {
     const { app, store } = tempApp();
-    await app.request("http://127.0.0.1:8787/api/connections/instagram", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appId: "ig-app", appSecret: "ig-secret" }),
-    });
+    process.env.META_APP_ID = "ig-app";
+    process.env.META_APP_SECRET = "ig-secret";
     const start = await app.request(
       "http://127.0.0.1:8787/oauth/instagram/start",
     );
@@ -175,7 +166,7 @@ describe("platform sign-in", () => {
     expect(store.get("instagram")?.credentials.accessToken).toBe(
       "long-lived-token",
     );
-    expect(store.get("instagram")?.credentials.appSecret).toBe("ig-secret");
+    expect(store.get("instagram")?.credentials.appSecret).toBeNull();
     expect(store.get("instagram")?.account?.handle).toBe("studio");
     store.close();
   });
@@ -206,15 +197,20 @@ describe("platform sign-in", () => {
       }),
     );
 
-    await expect(
-      exchangeFacebookCode({
-        appId: "fb-app",
-        appSecret: "fb-secret",
-        code: "auth-code",
-        redirectUri: "http://127.0.0.1:8787/oauth/facebook/callback",
-        pageId: null,
-      }),
-    ).rejects.toThrow(/more than one Page/);
+    const choice = await exchangeFacebookCode({
+      appId: "fb-app",
+      appSecret: "fb-secret",
+      code: "auth-code",
+      redirectUri: "http://127.0.0.1:8787/oauth/facebook/callback",
+      pageId: null,
+    });
+    expect(choice).toEqual({
+      status: "choose",
+      pages: [
+        { id: "111", name: "First", accessToken: "page-111" },
+        { id: "222", name: "Second", accessToken: "page-222" },
+      ],
+    });
 
     const matched = await exchangeFacebookCode({
       appId: "fb-app",
@@ -224,6 +220,7 @@ describe("platform sign-in", () => {
       pageId: "222",
     });
     expect(matched).toEqual({
+      status: "connected",
       pageAccessToken: "page-222",
       pageId: "222",
       pageName: "Second",

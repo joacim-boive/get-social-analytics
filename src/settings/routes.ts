@@ -3,13 +3,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { registerDataRoutes } from "../api/routes.js";
 import { getClient } from "../platforms/client.js";
 import { PlatformApiError } from "../platforms/errors.js";
-import { exchangeFacebookCode, facebookAuthorizeUrl } from "../platforms/facebook.js";
-import { exchangeInstagramCode, instagramAuthorizeUrl } from "../platforms/instagram.js";
+import { exchangeFacebookCode, facebookAppConfig, facebookAuthorizeUrl } from "../platforms/facebook.js";
+import { exchangeInstagramCode, instagramAppConfig, instagramAuthorizeUrl } from "../platforms/instagram.js";
 import { exchangeTikTokCode } from "../platforms/tiktok.js";
 import { exchangeYouTubeCode } from "../platforms/youtube.js";
 import type { PlatformId } from "../report/types.js";
 import { isPlatformId, platformLabel } from "../report/types.js";
 import type { CredentialStore } from "../store.js";
+import { isRecord, readString } from "../util.js";
 import { assertAllowedOrigin, requestOrigin } from "./origin.js";
 import { renderSettingsPage, type PageNotice } from "./page.js";
 import { listPublic, toPublic } from "./public.js";
@@ -63,6 +64,40 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
           connection: toPublic(store, platform),
         },
         error instanceof SettingsError ? 400 : 500,
+      );
+    }
+  });
+
+  app.post("/api/connections/facebook/choose", async (c) => {
+    const body: unknown = await c.req.json();
+    const pageId = isRecord(body) ? readString(body, "pageId") : null;
+    const existing = store.get("facebook");
+    const page = existing?.credentials.pendingPages?.find((item) => item.id === pageId);
+    if (!existing || !page) {
+      return c.json({ ok: false, message: "Choose a Page from the list." }, 400);
+    }
+    store.save(
+      "facebook",
+      {
+        appId: existing.credentials.appId,
+        appSecret: existing.credentials.appSecret,
+        pageAccessToken: page.accessToken,
+        pageId: page.id,
+        pendingPages: null,
+      },
+      { account: { id: page.id, name: page.name, handle: null }, tokenExpiresAt: null },
+    );
+    try {
+      const account = await getClient("facebook").test(store);
+      return c.json({
+        ok: true,
+        message: `Connected as ${account.name}.`,
+        connection: toPublic(store, "facebook"),
+      });
+    } catch (error) {
+      return c.json(
+        { ok: false, message: errorMessage(error), connection: toPublic(store, "facebook") },
+        400,
       );
     }
   });
@@ -141,7 +176,8 @@ export function createSettingsApp(store: CredentialStore, options: SettingsAppOp
         errorRedirect(provider, "The platform did not return a code."),
       );
     try {
-      await storeExchangedCode(store, provider, code, pending);
+      const outcome = await storeExchangedCode(store, provider, code, pending);
+      if (outcome === "choose") return c.redirect("/?choose=facebook");
       await getClient(provider).test(store);
       return c.redirect(`/?connected=${provider}`);
     } catch (error) {
@@ -168,18 +204,14 @@ function authorizeUrl(
   challenge: string,
 ): string {
   if (provider === "instagram") {
-    const connection = store.get("instagram");
-    if (!connection?.credentials.appId) {
-      throw new SettingsError("Save the app id and secret first.");
-    }
-    return instagramAuthorizeUrl({ appId: connection.credentials.appId, redirectUri, state });
+    const app = instagramAppConfig(store.get("instagram")?.credentials);
+    if (!app) throw new SettingsError("Instagram sign-in is not available yet.");
+    return instagramAuthorizeUrl({ appId: app.appId, redirectUri, state });
   }
   if (provider === "facebook") {
-    const connection = store.get("facebook");
-    if (!connection?.credentials.appId || !connection.credentials.appSecret) {
-      throw new SettingsError("Save the app id and secret first.");
-    }
-    return facebookAuthorizeUrl({ appId: connection.credentials.appId, redirectUri, state });
+    const app = facebookAppConfig(store.get("facebook")?.credentials);
+    if (!app) throw new SettingsError("Facebook sign-in is not available yet.");
+    return facebookAuthorizeUrl({ appId: app.appId, redirectUri, state });
   }
   if (provider === "tiktok") {
     const connection = store.get("tiktok");
@@ -217,48 +249,68 @@ async function storeExchangedCode(
   provider: PlatformId,
   code: string,
   pending: { verifier: string; redirectUri: string },
-): Promise<void> {
+): Promise<"connected" | "choose"> {
   if (provider === "instagram") {
     const existing = store.get("instagram");
-    if (!existing?.credentials.appId) throw new SettingsError("Save the app id and secret first.");
+    const app = instagramAppConfig(existing?.credentials);
+    if (!app) throw new SettingsError("Instagram sign-in is not available yet.");
     const exchanged = await exchangeInstagramCode({
-      appId: existing.credentials.appId,
-      appSecret: existing.credentials.appSecret,
+      appId: app.appId,
+      appSecret: app.appSecret,
       code,
       redirectUri: pending.redirectUri,
     });
     store.save(
       "instagram",
-      { ...existing.credentials, accessToken: exchanged.accessToken },
-      { account: existing.account, tokenExpiresAt: exchanged.expiresAt },
+      {
+        appId: existing?.credentials.appId ?? null,
+        appSecret: existing?.credentials.appSecret ?? null,
+        accessToken: exchanged.accessToken,
+      },
+      { account: existing?.account ?? null, tokenExpiresAt: exchanged.expiresAt },
     );
-    return;
+    return "connected";
   }
   if (provider === "facebook") {
     const existing = store.get("facebook");
-    if (!existing?.credentials.appId || !existing.credentials.appSecret) {
-      throw new SettingsError("Save the app id and secret first.");
-    }
+    const app = facebookAppConfig(existing?.credentials);
+    if (!app) throw new SettingsError("Facebook sign-in is not available yet.");
     const exchanged = await exchangeFacebookCode({
-      appId: existing.credentials.appId,
-      appSecret: existing.credentials.appSecret,
+      appId: app.appId,
+      appSecret: app.appSecret,
       code,
       redirectUri: pending.redirectUri,
-      pageId: existing.credentials.pageId,
+      pageId: existing?.credentials.pageId ?? null,
     });
+    if (exchanged.status === "choose") {
+      store.save(
+        "facebook",
+        {
+          appId: existing?.credentials.appId ?? null,
+          appSecret: existing?.credentials.appSecret ?? null,
+          pageAccessToken: null,
+          pageId: null,
+          pendingPages: exchanged.pages,
+        },
+        { account: null, tokenExpiresAt: null },
+      );
+      return "choose";
+    }
     store.save(
       "facebook",
       {
-        ...existing.credentials,
+        appId: existing?.credentials.appId ?? null,
+        appSecret: existing?.credentials.appSecret ?? null,
         pageAccessToken: exchanged.pageAccessToken,
         pageId: exchanged.pageId,
+        pendingPages: null,
       },
       {
         account: { id: exchanged.pageId, name: exchanged.pageName, handle: null },
         tokenExpiresAt: null,
       },
     );
-    return;
+    return "connected";
   }
   if (provider === "tiktok") {
     const existing = store.get("tiktok");
@@ -280,7 +332,7 @@ async function storeExchangedCode(
       },
       { account: existing.account, tokenExpiresAt: exchanged.expiresAt },
     );
-    return;
+    return "connected";
   }
   const existing = store.get("youtube");
   if (!existing) throw new SettingsError("Save the client id and secret first.");
@@ -304,11 +356,15 @@ async function storeExchangedCode(
     },
     { account: existing.account, tokenExpiresAt: exchanged.expiresAt },
   );
+  return "connected";
 }
 
 function readNotice(
   query: Record<string, string | undefined>,
 ): PageNotice | null {
+  if (query.choose === "facebook") {
+    return { tone: "ok", text: "Choose the Facebook Page to measure." };
+  }
   if (query.connected && isPlatformId(query.connected)) {
     const extra = query.message ? ` ${query.message}` : "";
     return { tone: "ok", text: `${platformLabel(query.connected)} is signed in.${extra}` };

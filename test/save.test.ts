@@ -50,7 +50,13 @@ describe("blank secret saves", () => {
     const store = tempStore();
     store.save(
       "facebook",
-      { appId: null, appSecret: null, pageAccessToken: "page-token-1234", pageId: "998877" },
+      {
+        appId: null,
+        appSecret: null,
+        pageAccessToken: "page-token-1234",
+        pageId: "998877",
+        pendingPages: null,
+      },
       { tokenExpiresAt: "2026-12-01T00:00:00.000Z" },
     );
     saveConnection(store, "facebook", { pageAccessToken: "" });
