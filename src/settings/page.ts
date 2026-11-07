@@ -369,8 +369,8 @@ export function renderSettingsPage(args: {
         reportStatus.className = "result error";
         return;
       }
-      if (!Number.isInteger(days) || days < 1 || days > 365) {
-        reportStatus.textContent = "Days must be a whole number from 1 to 365.";
+      if (!Number.isInteger(days) || days < 1 || days > 730) {
+        reportStatus.textContent = "Days must be a whole number from 1 to 730.";
         reportStatus.className = "result error";
         return;
       }
@@ -447,7 +447,9 @@ export function renderSettingsPage(args: {
 function clerkScript(publishableKey: string | null): string {
   if (!publishableKey) return "";
   const encoded = publishableKey.replace(/^pk_(test|live)_/, "");
-  const frontendApi = Buffer.from(encoded, "base64").toString("utf8").replace(/\$$/, "");
+  const frontendApi = Buffer.from(encoded, "base64")
+    .toString("utf8")
+    .replace(/\$$/, "");
   const src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
   return `<script async crossorigin="anonymous" data-clerk-publishable-key="${escapeHtml(publishableKey)}" src="${escapeHtml(src)}"></script>`;
 }
@@ -469,7 +471,7 @@ function renderReportPanel(connections: PublicConnection[]): string {
     </fieldset>
     <label for="days">Days</label>
     <div class="day-row">
-      <input id="days" name="days" type="number" inputmode="numeric" min="1" max="365" value="30" />
+      <input id="days" name="days" type="number" inputmode="numeric" min="1" max="730" value="30" />
       <button class="day-pick" type="button" data-days="7">7</button>
       <button class="day-pick" type="button" data-days="30">30</button>
       <button class="day-pick" type="button" data-days="28">28</button>

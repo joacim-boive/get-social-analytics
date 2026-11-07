@@ -166,6 +166,17 @@ describe("analytics HTTP API", () => {
   });
 });
 
+describe("settings page", () => {
+  it("lets the copy form request the same 730-day window as the API", async () => {
+    const { app, store } = tempApp();
+    const response = await app.request("http://127.0.0.1/");
+    const html = await response.text();
+    expect(html).toContain('max="730"');
+    expect(html).toContain("Days must be a whole number from 1 to 730.");
+    store.close();
+  });
+});
+
 function tempApp(): {
   app: ReturnType<typeof createSettingsApp>;
   store: CredentialStore;

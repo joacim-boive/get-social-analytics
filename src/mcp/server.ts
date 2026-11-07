@@ -69,7 +69,7 @@ export function createMcpServer(store: CredentialStore): McpServer {
         "Fetch normalized analytics for the connected social accounts.",
         "Call this before a decision that depends on recent performance. Dates are calendar days in the timezone of the machine running the server.",
         "platforms: instagram, facebook, tiktok, youtube, or all (default all).",
-        "period: { preset } or { start, end } as inclusive YYYY-MM-DD. Presets: yesterday, last_7_days, last_28_days, last_90_days, this_month, last_month. Default last_7_days, which includes today.",
+        "period: { preset } or { start, end } as inclusive YYYY-MM-DD. Presets: yesterday, last_7_days, last_28_days, last_30_days, last_90_days, this_month, last_month. Default last_7_days, which includes today.",
         "format: json (default) or markdown. Markdown omits daily series.",
         "include: summary, content, or both (default both).",
         "contentLimit: 1-50, default 10.",

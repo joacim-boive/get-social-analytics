@@ -62,15 +62,15 @@ The API returns the same report as the MCP tools. A platform that is not connect
 
 Query parameters match the tool arguments:
 
-| Parameter      | Default       | Values                                                                                      |
-| -------------- | ------------- | ------------------------------------------------------------------------------------------- |
-| `platforms`    | `all`         | Comma-separated ids, or `all`. Ignored when the path names one platform.                    |
-| `period`       | `last_7_days` | `yesterday`, `last_7_days`, `last_28_days`, `last_90_days`, `this_month`, `last_month`      |
-| `start`, `end` |               | Inclusive `YYYY-MM-DD`. Use these instead of `period`.                                      |
-| `days`         |               | Whole number from 1 to 730, ending today and including today. Use this instead of `period`. |
-| `include`      | `both`        | `summary`, `content`, `both`. Content routes always return content.                         |
-| `contentLimit` | `10`          | `1`–`50`                                                                                    |
-| `format`       | `json`        | `json`, or `markdown` (`text/markdown`, daily series omitted)                               |
+| Parameter      | Default       | Values                                                                                                 |
+| -------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
+| `platforms`    | `all`         | Comma-separated ids, or `all`. Ignored when the path names one platform.                               |
+| `period`       | `last_7_days` | `yesterday`, `last_7_days`, `last_28_days`, `last_30_days`, `last_90_days`, `this_month`, `last_month` |
+| `start`, `end` |               | Inclusive `YYYY-MM-DD`. Use these instead of `period`.                                                 |
+| `days`         |               | Whole number from 1 to 730, ending today and including today. Use this instead of `period`.            |
+| `include`      | `both`        | `summary`, `content`, `both`. Content routes always return content.                                    |
+| `contentLimit` | `10`          | `1`–`50`                                                                                               |
+| `format`       | `json`        | `json`, or `markdown` (`text/markdown`, daily series omitted)                                          |
 
 ```bash
 curl "http://127.0.0.1:8787/api/analytics/youtube?period=last_7_days"
@@ -94,7 +94,7 @@ Call `list_platforms` first. It reports which accounts are saved, the account na
 | `include`      | `both`        | `summary`, `content`, `both` (`get_analytics` only)           |
 | `contentLimit` | `10`          | `1`–`50`                                                      |
 
-Presets: `yesterday`, `last_7_days`, `last_28_days`, `last_90_days`, `this_month`, `last_month`. Ranges are inclusive calendar days in the timezone of the machine running the server. `last_7_days` includes today.
+Presets: `yesterday`, `last_7_days`, `last_28_days`, `last_30_days`, `last_90_days`, `this_month`, `last_month`. Ranges are inclusive calendar days in the timezone of the machine running the server. `last_7_days` includes today.
 
 Markdown leaves out the daily series. JSON includes it when the platform has daily points.
 
@@ -107,6 +107,7 @@ Every successful platform block has the same fields: `account`, `period.requeste
 Each metric has an `aggregation` and a `source`:
 
 - `period_total` — measured during the applied range
+- `period_average` — a mean during the applied range. YouTube uses this for average view duration and average view percentage
 - `snapshot` — the current value, such as follower count right now
 - `content_lifetime_sum` — lifetime totals of items published in the range
 

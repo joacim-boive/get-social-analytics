@@ -37,7 +37,7 @@ A platform client implements `test`, `analytics`, and `content` in `src/platform
 These are product rules. A change that makes the JSON easier to produce by weakening them is a bug.
 
 - Every platform block uses the same fields. Shared metric keys are `followers`, `followers_gained`, `followers_lost`, `views`, `reach`, `engagements`, and `watch_time_minutes`. Fill one only when the mapping is real.
-- `aggregation` is `period_total`, `snapshot`, or `content_lifetime_sum`. Keep `source` set to the upstream metric name.
+- `aggregation` is `period_total`, `period_average`, `snapshot`, or `content_lifetime_sum`. `period_average` is YouTube average view duration and average view percentage. Keep `source` set to the upstream metric name.
 - TikTok has no period analytics. Views and engagements for a range are lifetime totals of videos published in that range. Label them `content_lifetime_sum`. Do not describe them as views during the week.
 - Do not sum daily unique counts into period reach. Facebook reach comes from a range unique. If that call fails, leave `reach` in `unavailable`.
 - An empty Instagram insight set is unavailable, not zero. YouTube may return no daily rows; totals of zero stay, with a note that recent days often lag.

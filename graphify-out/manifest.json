@@ -1,0 +1,277 @@
+{
+  "/Users/jocke/Repos/get-social-analytics-1/package.json": {
+    "mtime": 1793189924.4519846,
+    "ast_hash": "1713243a53d5e27fc12bf0ed58a39c8e",
+    "semantic_hash": "1713243a53d5e27fc12bf0ed58a39c8e"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/skills-lock.json": {
+    "mtime": 1793189924.4520464,
+    "ast_hash": "86fa4dc570dccdbce3bb36034ddbbcbd",
+    "semantic_hash": "86fa4dc570dccdbce3bb36034ddbbcbd"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/api/query.ts": {
+    "mtime": 1793189924.4522247,
+    "ast_hash": "6d763724334278a364018f1d78360952",
+    "semantic_hash": "6d763724334278a364018f1d78360952"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/api/routes.ts": {
+    "mtime": 1793189924.4523034,
+    "ast_hash": "a7e42537a89c40be148c030ddee128d3",
+    "semantic_hash": "a7e42537a89c40be148c030ddee128d3"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/auth.ts": {
+    "mtime": 1793189924.4524562,
+    "ast_hash": "c488b2cded0741ff6796cc6cd7f96a3d",
+    "semantic_hash": "c488b2cded0741ff6796cc6cd7f96a3d"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/credentials.ts": {
+    "mtime": 1793189924.4525247,
+    "ast_hash": "39d7b107edf18e1ab9e145b50351a936",
+    "semantic_hash": "39d7b107edf18e1ab9e145b50351a936"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/http.ts": {
+    "mtime": 1793189924.4525912,
+    "ast_hash": "59de29ae03110fa26045cf2644385ee4",
+    "semantic_hash": "59de29ae03110fa26045cf2644385ee4"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/mcp/http.ts": {
+    "mtime": 1793189924.4527023,
+    "ast_hash": "408779a6fba5b18b797cd4253667a1d5",
+    "semantic_hash": "408779a6fba5b18b797cd4253667a1d5"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/mcp/server.ts": {
+    "mtime": 1793189924.4528182,
+    "ast_hash": "80e7112e7a15598bc9c55bdc1cbd6a4a",
+    "semantic_hash": "80e7112e7a15598bc9c55bdc1cbd6a4a"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/client.ts": {
+    "mtime": 1793189924.4529555,
+    "ast_hash": "21dd8095f0854af0e2a9249cfbc090ae",
+    "semantic_hash": "21dd8095f0854af0e2a9249cfbc090ae"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/errors.ts": {
+    "mtime": 1793189924.453058,
+    "ast_hash": "2ce2aa77246ea0bbf14565f306d9f0b1",
+    "semantic_hash": "2ce2aa77246ea0bbf14565f306d9f0b1"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/facebook.ts": {
+    "mtime": 1793189924.4531708,
+    "ast_hash": "448bc9a4a681b4f0cbcd43f8bf10502a",
+    "semantic_hash": "448bc9a4a681b4f0cbcd43f8bf10502a"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/http.ts": {
+    "mtime": 1793189924.4532557,
+    "ast_hash": "09a21e40d50c8dd5c3ed00efb301aad3",
+    "semantic_hash": "09a21e40d50c8dd5c3ed00efb301aad3"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/insights.ts": {
+    "mtime": 1793189924.453372,
+    "ast_hash": "c6642795b3b5e213d97a27cc5978e850",
+    "semantic_hash": "c6642795b3b5e213d97a27cc5978e850"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/instagram.ts": {
+    "mtime": 1793189924.4534872,
+    "ast_hash": "d65b9230e87c240758a0b8a4647b4573",
+    "semantic_hash": "d65b9230e87c240758a0b8a4647b4573"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/remember.ts": {
+    "mtime": 1793189924.4536428,
+    "ast_hash": "d79c932b54e2e9fe60f306e1ce06041f",
+    "semantic_hash": "d79c932b54e2e9fe60f306e1ce06041f"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/tiktok.ts": {
+    "mtime": 1793189924.4537787,
+    "ast_hash": "79620cc547965fe47dde1d3322bd776f",
+    "semantic_hash": "79620cc547965fe47dde1d3322bd776f"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/platforms/youtube.ts": {
+    "mtime": 1793189924.4538975,
+    "ast_hash": "2d33e1abd4a8b4216800f7b00817e21b",
+    "semantic_hash": "2d33e1abd4a8b4216800f7b00817e21b"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/report/build.ts": {
+    "mtime": 1793189924.454049,
+    "ast_hash": "59a461dee5240aef3168aa63a6c03849",
+    "semantic_hash": "59a461dee5240aef3168aa63a6c03849"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/report/compare.ts": {
+    "mtime": 1793189924.4541566,
+    "ast_hash": "5b04685253eaaad4b3a4ebf198e1c8b4",
+    "semantic_hash": "5b04685253eaaad4b3a4ebf198e1c8b4"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/report/format.ts": {
+    "mtime": 1793189924.4542537,
+    "ast_hash": "74e44bbe28815325cddfd362b3f530fc",
+    "semantic_hash": "74e44bbe28815325cddfd362b3f530fc"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/report/period.ts": {
+    "mtime": 1793189924.4543798,
+    "ast_hash": "cd0520da834f91fb7093bc9437c479c6",
+    "semantic_hash": "cd0520da834f91fb7093bc9437c479c6"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/report/types.ts": {
+    "mtime": 1793189924.4546022,
+    "ast_hash": "6c6cc047ee3bc89c0a232eff11c88f7d",
+    "semantic_hash": "6c6cc047ee3bc89c0a232eff11c88f7d"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/server.ts": {
+    "mtime": 1793189924.454677,
+    "ast_hash": "08a5d3591e8f2851d3a34270a27f9820",
+    "semantic_hash": "08a5d3591e8f2851d3a34270a27f9820"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/settings/fields.ts": {
+    "mtime": 1793189924.454785,
+    "ast_hash": "a3631d236a3c70b45a03a911633e754d",
+    "semantic_hash": "a3631d236a3c70b45a03a911633e754d"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/settings/origin.ts": {
+    "mtime": 1793189924.4548512,
+    "ast_hash": "0d41f01286cba9298dc4e8674954a7ce",
+    "semantic_hash": "0d41f01286cba9298dc4e8674954a7ce"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/settings/page.ts": {
+    "mtime": 1793189924.4549506,
+    "ast_hash": "b8687912bc05c0e58fdcafbfd8919b7f",
+    "semantic_hash": "b8687912bc05c0e58fdcafbfd8919b7f"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/settings/public.ts": {
+    "mtime": 1793189924.4550261,
+    "ast_hash": "90791e929e37205b61deb921b2d0eda7",
+    "semantic_hash": "90791e929e37205b61deb921b2d0eda7"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/settings/routes.ts": {
+    "mtime": 1793189924.4551783,
+    "ast_hash": "afc81ae94509d413a2dda85b9f91150f",
+    "semantic_hash": "afc81ae94509d413a2dda85b9f91150f"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/settings/save.ts": {
+    "mtime": 1793189924.4552774,
+    "ast_hash": "8f6f06d628ef873ae10331cbf6677520",
+    "semantic_hash": "8f6f06d628ef873ae10331cbf6677520"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/stdio.ts": {
+    "mtime": 1793189924.455348,
+    "ast_hash": "d5168bba6a6ede411c6faeaf4a09d3ea",
+    "semantic_hash": "d5168bba6a6ede411c6faeaf4a09d3ea"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/store-turso.ts": {
+    "mtime": 1793189924.4555838,
+    "ast_hash": "7bcf77746d073db1fc38cb7e08a053d5",
+    "semantic_hash": "7bcf77746d073db1fc38cb7e08a053d5"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/store.ts": {
+    "mtime": 1793189924.4557714,
+    "ast_hash": "6504832d02e3a29b3b9fa2f7ec0ec318",
+    "semantic_hash": "6504832d02e3a29b3b9fa2f7ec0ec318"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/src/util.ts": {
+    "mtime": 1793189924.4558513,
+    "ast_hash": "9c999721e660891a2d23761b802ec582",
+    "semantic_hash": "9c999721e660891a2d23761b802ec582"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/api.test.ts": {
+    "mtime": 1793189924.456011,
+    "ast_hash": "ba741c7e3cae67fed4f40f1f68193431",
+    "semantic_hash": "ba741c7e3cae67fed4f40f1f68193431"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/auth.test.ts": {
+    "mtime": 1793189924.456121,
+    "ast_hash": "f12ed8b84274c9f8079384376653ceed",
+    "semantic_hash": "f12ed8b84274c9f8079384376653ceed"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/compare.test.ts": {
+    "mtime": 1793189924.456254,
+    "ast_hash": "7cbe9343c934798b0594bd5546966374",
+    "semantic_hash": "7cbe9343c934798b0594bd5546966374"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/errors.test.ts": {
+    "mtime": 1793189924.4563224,
+    "ast_hash": "61a65d10a8f42b684cac9f688ff0ead8",
+    "semantic_hash": "61a65d10a8f42b684cac9f688ff0ead8"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/format.test.ts": {
+    "mtime": 1793189924.4565153,
+    "ast_hash": "906a542d1c2315aa4e36b7edba452e0a",
+    "semantic_hash": "906a542d1c2315aa4e36b7edba452e0a"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/insights.test.ts": {
+    "mtime": 1793189924.4565897,
+    "ast_hash": "af7827660bb3db77142361d3523b5045",
+    "semantic_hash": "af7827660bb3db77142361d3523b5045"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/origin.test.ts": {
+    "mtime": 1793189924.4566667,
+    "ast_hash": "980a37b5dc7b02a67449d002f8112407",
+    "semantic_hash": "980a37b5dc7b02a67449d002f8112407"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/period.test.ts": {
+    "mtime": 1793189924.4567506,
+    "ast_hash": "3a22e0077fd979cee81eaccea2106485",
+    "semantic_hash": "3a22e0077fd979cee81eaccea2106485"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/refresh.test.ts": {
+    "mtime": 1793189924.4568205,
+    "ast_hash": "b89ba56adde7a55816eba6378c44d3ba",
+    "semantic_hash": "b89ba56adde7a55816eba6378c44d3ba"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/test/youtube-save.test.ts": {
+    "mtime": 1793189924.4568846,
+    "ast_hash": "0dcb29974362c42002cc602b937598d5",
+    "semantic_hash": "0dcb29974362c42002cc602b937598d5"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/tsconfig.json": {
+    "mtime": 1793189924.456956,
+    "ast_hash": "b900360ee24a523c7f64d71c55b402f9",
+    "semantic_hash": "b900360ee24a523c7f64d71c55b402f9"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/vitest.config.ts": {
+    "mtime": 1793189924.4570205,
+    "ast_hash": "7b6a2c17d3263160d253a4e712a7b506",
+    "semantic_hash": "7b6a2c17d3263160d253a4e712a7b506"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/.agents/skills/turso-cloud/SKILL.md": {
+    "mtime": 1793189924.4504178,
+    "ast_hash": "900f23d0959099d58893493fdd6792da",
+    "semantic_hash": "900f23d0959099d58893493fdd6792da"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/.agents/skills/turso-cloud/turso-cloud-auth/overview.md": {
+    "mtime": 1793189924.450588,
+    "ast_hash": "c764bf01bc830a9889f345cd16567e06",
+    "semantic_hash": "c764bf01bc830a9889f345cd16567e06"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/.agents/skills/turso-cloud/turso-cloud-go/overview.md": {
+    "mtime": 1793189924.4507105,
+    "ast_hash": "9a70aabfc59cc0c23e4a8e7b46152048",
+    "semantic_hash": "9a70aabfc59cc0c23e4a8e7b46152048"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/.agents/skills/turso-cloud/turso-cloud-js/overview.md": {
+    "mtime": 1793189924.4508288,
+    "ast_hash": "7669df586ec7b1ec7e47e148a5b1a235",
+    "semantic_hash": "7669df586ec7b1ec7e47e148a5b1a235"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/.agents/skills/turso-cloud/turso-cloud-py/overview.md": {
+    "mtime": 1793189924.4509604,
+    "ast_hash": "b16c2ff115504aee2e94ed37e3a4374a",
+    "semantic_hash": "b16c2ff115504aee2e94ed37e3a4374a"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/.agents/skills/turso-cloud/turso-cloud-rust/overview.md": {
+    "mtime": 1793189924.451072,
+    "ast_hash": "664ce54a80fd75f69404aed1487ceab9",
+    "semantic_hash": "664ce54a80fd75f69404aed1487ceab9"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/.agents/skills/turso-cloud/turso-cloud-vercel/overview.md": {
+    "mtime": 1793189924.4512217,
+    "ast_hash": "a8672b536331740e253a82ba4b9b28c6",
+    "semantic_hash": "a8672b536331740e253a82ba4b9b28c6"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/AGENTS.md": {
+    "mtime": 1793189924.4514496,
+    "ast_hash": "a03b891a4ec7119612b4d88cdde28055",
+    "semantic_hash": "a03b891a4ec7119612b4d88cdde28055"
+  },
+  "/Users/jocke/Repos/get-social-analytics-1/README.md": {
+    "mtime": 1793189924.451609,
+    "ast_hash": "5f026b690d8fb49bbaa13008c056cabf",
+    "semantic_hash": "5f026b690d8fb49bbaa13008c056cabf"
+  }
+}
