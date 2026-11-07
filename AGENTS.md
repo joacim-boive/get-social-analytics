@@ -55,7 +55,8 @@ These are product rules. A change that makes the JSON easier to produce by weake
 - YouTube can be saved with only the client id and secret. `refreshToken` stays null until sign-in or a pasted token. Do not call Google's token endpoint without one.
 - TikTok and YouTube refresh tokens are rotated under `store.withLock`. Re-read inside the lock. If another process already replaced the failed access token, keep that replacement and do not refresh again.
 - OAuth redirects are the hosted origin plus `/oauth/<provider>/callback`, or localhost for tests. Reject any other host.
-- Instagram and Facebook stay paste-only. Do not add a Meta login button unless that flow is actually configured.
+- Instagram and Facebook show Sign in when `META_APP_ID` and `META_APP_SECRET` are set. That sign-in stores the grant the server uses for analytics. Without those values they stay paste-only.
+- TikTok and YouTube Sign in uses `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` and `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` when set, and otherwise the client credentials already saved for the account. The resulting token is what analytics calls use.
 
 ## Code
 

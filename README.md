@@ -24,6 +24,8 @@ Open [http://127.0.0.1:8787](http://127.0.0.1:8787). Set `PORT` if you need a di
 
 Each card has the fields, a short note on where the credential comes from, **Save**, and **Test connection**. Test saves the fields, calls the platform, and shows the account name or the exact error. After a secret is saved, the field is cleared and the placeholder shows the last four characters. Leave a secret blank to keep the saved value.
 
+**Sign in** is available when this server has the platform's application credentials. The sign-in grant is stored for the Clerk account and is what later analytics calls use. Set `META_APP_ID` and `META_APP_SECRET` for Instagram and Facebook, `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` for TikTok, and `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` for YouTube. Register `https://get-social-analytics.vercel.app/oauth/instagram/callback`, `/oauth/facebook/callback`, `/oauth/tiktok/callback`, and `/oauth/youtube/callback` on those applications. Without the Meta values, Instagram and Facebook stay paste-only. TikTok and YouTube can still sign in from a client id and secret saved on the card.
+
 **Copy for an agent** pulls the platforms and day count you choose, then shows the same JSON as `GET /api/analytics`. Copy that text and paste it into the agent.
 
 ## Connect an agent
